@@ -1,0 +1,366 @@
+/* ─── Preset Analyzer Extension Styles ─────────────────────────────────────── */
+
+.preset_analyzer_settings .inline-drawer-content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* ─── Progress Indicator ──────────────────────────────────────────────────── */
+
+.pa_progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    border-radius: 4px;
+    background: var(--SmartThemeBlurTintColor);
+}
+
+.pa_progress_spinner {
+    font-size: 1.2em;
+}
+
+/* ─── Results Container ───────────────────────────────────────────────────── */
+
+.pa_results {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* ─── Issue Group (collapsible) ───────────────────────────────────────────── */
+
+.pa_issue_group {
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.pa_issue_group_header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    cursor: pointer;
+    background: var(--SmartThemeBlurTintColor);
+    user-select: none;
+}
+
+.pa_issue_group_header:hover {
+    filter: brightness(1.1);
+}
+
+.pa_issue_group_header .pa_group_title {
+    font-weight: bold;
+}
+
+.pa_issue_group_header .pa_group_count {
+    font-size: 0.85em;
+    opacity: 0.7;
+}
+
+.pa_issue_group_header .pa_group_chevron {
+    transition: transform 0.2s;
+}
+
+.pa_issue_group.collapsed .pa_issue_group_body {
+    display: none;
+}
+
+.pa_issue_group.collapsed .pa_group_chevron {
+    transform: rotate(-90deg);
+}
+
+.pa_issue_group_body {
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* ─── Individual Finding ──────────────────────────────────────────────────── */
+
+.pa_finding {
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 4px;
+    padding: 10px;
+    background: var(--SmartThemeBlurTintColor);
+}
+
+.pa_finding_header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+}
+
+.pa_finding_summary {
+    flex: 1;
+    min-width: 200px;
+}
+
+/* ─── Severity Badges ─────────────────────────────────────────────────────── */
+
+.pa_severity {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 0.75em;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.pa_severity_high {
+    background: rgba(220, 53, 69, 0.25);
+    color: #ff6b7a;
+    border: 1px solid rgba(220, 53, 69, 0.4);
+}
+
+.pa_severity_medium {
+    background: rgba(255, 193, 7, 0.2);
+    color: #ffc107;
+    border: 1px solid rgba(255, 193, 7, 0.35);
+}
+
+.pa_severity_low {
+    background: rgba(0, 123, 255, 0.2);
+    color: #6ea8fe;
+    border: 1px solid rgba(0, 123, 255, 0.35);
+}
+
+/* ─── Confidence Display ──────────────────────────────────────────────────── */
+
+.pa_confidence {
+    font-size: 0.8em;
+    opacity: 0.8;
+}
+
+/* ─── Likely Intentional Tag ──────────────────────────────────────────────── */
+
+.pa_intentional_tag {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 0.7em;
+    background: rgba(108, 117, 125, 0.25);
+    color: #adb5bd;
+    border: 1px solid rgba(108, 117, 125, 0.35);
+}
+
+/* ─── Quoted Passages ─────────────────────────────────────────────────────── */
+
+.pa_passage {
+    border-left: 3px solid var(--SmartThemeBorderColor);
+    padding: 6px 10px;
+    margin: 6px 0;
+    font-size: 0.9em;
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 0 4px 4px 0;
+}
+
+.pa_passage_label {
+    font-size: 0.8em;
+    font-weight: bold;
+    opacity: 0.7;
+    margin-bottom: 2px;
+}
+
+/* ─── Deep Dive Button ────────────────────────────────────────────────────── */
+
+.pa_deep_dive_btn {
+    margin-top: 6px;
+    font-size: 0.85em;
+    cursor: pointer;
+    opacity: 0.8;
+}
+
+.pa_deep_dive_btn:hover {
+    opacity: 1;
+}
+
+/* ─── Follow-Up Results ───────────────────────────────────────────────────── */
+
+.pa_followup {
+    margin-top: 8px;
+    padding: 8px;
+    border: 1px dashed var(--SmartThemeBorderColor);
+    border-radius: 4px;
+}
+
+.pa_followup_analysis {
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 6px 0;
+}
+
+.pa_recommendation_badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 0.8em;
+    font-weight: bold;
+    background: rgba(25, 135, 84, 0.2);
+    color: #75b798;
+    border: 1px solid rgba(25, 135, 84, 0.35);
+}
+
+/* ─── Diff View ───────────────────────────────────────────────────────────── */
+
+.pa_diff_container {
+    margin-top: 8px;
+    padding: 8px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 0.85em;
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.5;
+    overflow-x: auto;
+}
+
+.diff-removed {
+    background: rgba(220, 53, 69, 0.25);
+    text-decoration: line-through;
+    color: #ff6b7a;
+}
+
+.diff-added {
+    background: rgba(25, 135, 84, 0.25);
+    color: #75b798;
+}
+
+.diff-equal {
+    /* Normal text */
+}
+
+/* ─── Assumptions Block ───────────────────────────────────────────────────── */
+
+.pa_assumptions {
+    margin-top: 8px;
+    padding: 8px;
+    border: 1px solid rgba(255, 193, 7, 0.3);
+    border-radius: 4px;
+    background: rgba(255, 193, 7, 0.05);
+    font-size: 0.85em;
+}
+
+.pa_assumptions_title {
+    font-weight: bold;
+    margin-bottom: 4px;
+    color: #ffc107;
+}
+
+.pa_assumptions ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.pa_assumptions li {
+    margin-bottom: 2px;
+}
+
+/* ─── Token Summary ───────────────────────────────────────────────────────── */
+
+.pa_token_summary {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px;
+    border-radius: 4px;
+    background: var(--SmartThemeBlurTintColor);
+    font-size: 0.85em;
+    flex-wrap: wrap;
+}
+
+.pa_token_saved {
+    color: #75b798;
+    font-weight: bold;
+}
+
+/* ─── Issue Explanation (Phase 1) ─────────────────────────────────────────── */
+
+.pa_explanation {
+    font-size: 0.9em;
+    margin: 4px 0;
+    opacity: 0.9;
+}
+
+.pa_suggested_rewrite {
+    margin: 6px 0;
+    padding: 6px 10px;
+    border-left: 3px solid rgba(25, 135, 84, 0.5);
+    background: rgba(25, 135, 84, 0.05);
+    border-radius: 0 4px 4px 0;
+    font-size: 0.9em;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.pa_suggested_rewrite_label {
+    font-size: 0.8em;
+    font-weight: bold;
+    color: #75b798;
+    margin-bottom: 2px;
+}
+
+/* ─── Section Headers ─────────────────────────────────────────────────────── */
+
+.pa_section_header {
+    font-weight: bold;
+    font-size: 0.95em;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--SmartThemeBorderColor);
+    margin-bottom: 4px;
+}
+
+/* ─── Error Display ───────────────────────────────────────────────────────── */
+
+.pa_error {
+    padding: 8px;
+    border: 1px solid rgba(220, 53, 69, 0.4);
+    border-radius: 4px;
+    background: rgba(220, 53, 69, 0.1);
+    color: #ff6b7a;
+    font-size: 0.9em;
+}
+
+/* ─── No Issues Found ─────────────────────────────────────────────────────── */
+
+.pa_no_issues {
+    padding: 12px;
+    text-align: center;
+    opacity: 0.6;
+    font-style: italic;
+}
+
+/* ─── Individual Prompt Result Wrapper ─────────────────────────────────────── */
+
+.pa_individual_result {
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 4px;
+    margin-bottom: 8px;
+}
+
+.pa_individual_result_header {
+    padding: 8px 12px;
+    font-weight: bold;
+    background: var(--SmartThemeBlurTintColor);
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.pa_individual_result_body {
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
