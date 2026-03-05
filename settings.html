@@ -1,0 +1,62 @@
+<div class="preset_analyzer_settings">
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <b>Preset Analyzer</b>
+            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+        </div>
+        <div class="inline-drawer-content">
+            <!-- Phase Toggles -->
+            <div class="flex-container flexFlowColumn">
+                <label class="checkbox_label" for="pa_cross_prompt_enabled">
+                    <input id="pa_cross_prompt_enabled" type="checkbox" checked />
+                    <span>Cross-Prompt Analysis (Phase 2)</span>
+                </label>
+                <label class="checkbox_label" for="pa_individual_enabled">
+                    <input id="pa_individual_enabled" type="checkbox" checked />
+                    <span>Individual Prompt Analysis (Phase 1)</span>
+                </label>
+            </div>
+
+            <hr />
+
+            <!-- Cross-Prompt Analysis -->
+            <div id="pa_cross_prompt_section">
+                <div class="flex-container">
+                    <button id="pa_run_cross_prompt" class="menu_button">
+                        <i class="fa-solid fa-magnifying-glass-chart"></i>
+                        <span>Run Cross-Prompt Analysis</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Individual Prompt Analysis -->
+            <div id="pa_individual_section">
+                <div class="flex-container">
+                    <select id="pa_prompt_select" class="text_pole">
+                        <option value="" disabled selected>Select a prompt...</option>
+                        <option value="__all__">Analyze All Prompts</option>
+                    </select>
+                </div>
+                <div class="flex-container">
+                    <button id="pa_run_individual" class="menu_button">
+                        <i class="fa-solid fa-microscope"></i>
+                        <span>Run Individual Analysis</span>
+                    </button>
+                </div>
+            </div>
+
+            <hr />
+
+            <!-- Progress Indicator -->
+            <div id="pa_progress" class="pa_progress" style="display: none;">
+                <div class="pa_progress_spinner">
+                    <i class="fa-solid fa-spinner fa-spin"></i>
+                </div>
+                <span id="pa_progress_text">Analyzing...</span>
+            </div>
+
+            <!-- Results Container -->
+            <div id="pa_results" class="pa_results"></div>
+        </div>
+    </div>
+</div>
