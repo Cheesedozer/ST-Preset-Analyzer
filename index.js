@@ -43,32 +43,41 @@ function getSettings() {
 // ─── Prompt Data Access ──────────────────────────────────────────────────────
 
 /**
+ * Get the raw prompts array from the prompt manager's service settings.
+ * @returns {Array|null}
+ */
+function getRawPrompts() {
+    if (!promptManager) {
+        toastr.error('Prompt Manager not available. Ensure you are using the Chat Completion API.', 'Preset Analyzer');
+        return null;
+    }
+
+    const allPrompts = promptManager.serviceSettings?.prompts;
+    if (!allPrompts || !Array.isArray(allPrompts)) {
+        toastr.error('Could not access prompt entries. Ensure a Chat Completion preset is loaded.', 'Preset Analyzer');
+        return null;
+    }
+
+    return allPrompts;
+}
+
+/**
  * Get all active (enabled, non-marker) prompt entries with content.
  * @returns {Array<{identifier: string, name: string, content: string, role: string}>}
  */
 function getActivePrompts() {
-    if (!promptManager) {
-        toastr.error('Prompt Manager not available. Ensure you are using the Chat Completion API.', 'Preset Analyzer');
-        return [];
-    }
+    const allPrompts = getRawPrompts();
+    if (!allPrompts) return [];
 
-    const prompts = [];
+    const results = [];
 
     try {
-        // Get all prompts for the current character (enabled only)
-        const charPrompts = promptManager.getPromptsForCharacter(null, true);
-
-        if (!charPrompts || charPrompts.length === 0) {
-            toastr.info('No active prompts found in the current preset.', 'Preset Analyzer');
-            return [];
-        }
-
-        for (const prompt of charPrompts) {
-            // Skip marker prompts and prompts without content
+        for (const prompt of allPrompts) {
             if (prompt.marker) continue;
             if (!prompt.content || prompt.content.trim().length === 0) continue;
+            if (promptManager.isPromptDisabledForActiveCharacter(prompt.identifier)) continue;
 
-            prompts.push({
+            results.push({
                 identifier: prompt.identifier,
                 name: prompt.name || prompt.identifier,
                 content: prompt.content,
@@ -81,7 +90,11 @@ function getActivePrompts() {
         return [];
     }
 
-    return prompts;
+    if (results.length === 0) {
+        toastr.info('No active prompts found in the current preset.', 'Preset Analyzer');
+    }
+
+    return results;
 }
 
 /**
@@ -89,13 +102,11 @@ function getActivePrompts() {
  * @returns {Array<{identifier: string, name: string, content: string}>}
  */
 function getAllPrompts() {
-    if (!promptManager) return [];
+    const allPrompts = getRawPrompts();
+    if (!allPrompts) return [];
 
     try {
-        const charPrompts = promptManager.getPromptsForCharacter(null, false);
-        if (!charPrompts) return [];
-
-        return charPrompts
+        return allPrompts
             .filter(p => !p.marker && p.content && p.content.trim().length > 0)
             .map(p => ({
                 identifier: p.identifier,
