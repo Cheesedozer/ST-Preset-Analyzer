@@ -364,3 +364,33 @@
     flex-direction: column;
     gap: 8px;
 }
+
+/* ─── Prompt Editor ──────────────────────────────────────────────────────── */
+
+.pa_prompt_hint {
+    display: block;
+    opacity: 0.6;
+    margin-bottom: 4px;
+}
+
+.pa_prompt_group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+
+.pa_prompt_editor {
+    font-family: monospace;
+    font-size: 0.85em;
+    resize: vertical;
+    min-height: 80px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.pa_reset_btn {
+    align-self: flex-end;
+    font-size: 0.8em;
+    padding: 4px 10px;
+}

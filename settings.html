@@ -17,6 +17,44 @@
                 </label>
             </div>
 
+            <!-- Analysis Prompts (collapsible) -->
+            <div class="inline-drawer">
+                <div class="inline-drawer-toggle inline-drawer-header">
+                    <b>Analysis Prompts</b>
+                    <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                </div>
+                <div class="inline-drawer-content">
+                    <small class="pa_prompt_hint">Leave empty to use the default prompt. The JSON schema instruction is appended automatically.</small>
+
+                    <div class="pa_prompt_group">
+                        <label for="pa_custom_cross_prompt"><b>Cross-Prompt System Prompt</b></label>
+                        <textarea id="pa_custom_cross_prompt" class="text_pole pa_prompt_editor" rows="6"></textarea>
+                        <button id="pa_reset_cross_prompt" class="menu_button pa_reset_btn" title="Reset to default">
+                            <i class="fa-solid fa-rotate-left"></i>
+                            <span>Reset to Default</span>
+                        </button>
+                    </div>
+
+                    <div class="pa_prompt_group">
+                        <label for="pa_custom_individual_prompt"><b>Individual System Prompt</b></label>
+                        <textarea id="pa_custom_individual_prompt" class="text_pole pa_prompt_editor" rows="6"></textarea>
+                        <button id="pa_reset_individual_prompt" class="menu_button pa_reset_btn" title="Reset to default">
+                            <i class="fa-solid fa-rotate-left"></i>
+                            <span>Reset to Default</span>
+                        </button>
+                    </div>
+
+                    <div class="pa_prompt_group">
+                        <label for="pa_custom_followup_prompt"><b>Follow-Up System Prompt</b></label>
+                        <textarea id="pa_custom_followup_prompt" class="text_pole pa_prompt_editor" rows="6"></textarea>
+                        <button id="pa_reset_followup_prompt" class="menu_button pa_reset_btn" title="Reset to default">
+                            <i class="fa-solid fa-rotate-left"></i>
+                            <span>Reset to Default</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <hr />
 
             <!-- Cross-Prompt Analysis -->
