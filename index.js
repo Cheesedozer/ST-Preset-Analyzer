@@ -11,6 +11,9 @@ import {
     buildIndividualUserPrompt,
     buildFollowUpSystemPrompt,
     buildFollowUpUserPrompt,
+    DEFAULT_CROSS_PROMPT,
+    DEFAULT_INDIVIDUAL_PROMPT,
+    DEFAULT_FOLLOWUP_PROMPT,
 } from './prompts.js';
 import { computeWordDiff, renderDiffHtml } from './diff.js';
 
@@ -20,6 +23,9 @@ const EXTENSION_FOLDER = 'ST-Preset-Analyzer';
 const defaultSettings = Object.freeze({
     crossPromptEnabled: true,
     individualEnabled: true,
+    customCrossPromptSystemPrompt: '',
+    customIndividualSystemPrompt: '',
+    customFollowUpSystemPrompt: '',
 });
 
 // ─── Settings Management ─────────────────────────────────────────────────────
@@ -530,7 +536,8 @@ async function runCrossPromptAnalysis() {
     showProgress(`Analyzing ${activePrompts.length} active prompts...`);
 
     try {
-        const systemPrompt = buildCrossPromptSystemPrompt();
+        const settings = getSettings();
+        const systemPrompt = buildCrossPromptSystemPrompt(settings.customCrossPromptSystemPrompt || undefined);
         const prompt = buildCrossPromptUserPrompt(activePrompts);
 
         const result = await generateRaw({
@@ -585,7 +592,8 @@ async function runIndividualAnalysis(promptIdentifier) {
         $results.empty();
     }
 
-    const systemPrompt = buildIndividualSystemPrompt();
+    const settings = getSettings();
+    const systemPrompt = buildIndividualSystemPrompt(settings.customIndividualSystemPrompt || undefined);
 
     for (let i = 0; i < promptsToAnalyze.length; i++) {
         const prompt = promptsToAnalyze[i];
@@ -625,7 +633,8 @@ async function runFollowUp(issue, activePromptsById, $parentFinding) {
     const { generateRaw } = SillyTavern.getContext();
 
     try {
-        const systemPrompt = buildFollowUpSystemPrompt();
+        const settings = getSettings();
+        const systemPrompt = buildFollowUpSystemPrompt(settings.customFollowUpSystemPrompt || undefined);
         const userPrompt = buildFollowUpUserPrompt(issue, activePromptsById);
 
         const result = await generateRaw({
@@ -680,6 +689,33 @@ async function runFollowUp(issue, activePromptsById, $parentFinding) {
         saveSettingsDebounced();
         updateSectionVisibility();
     });
+
+    // Sync custom prompt textareas with settings
+    const promptFields = [
+        { id: '#pa_custom_cross_prompt', key: 'customCrossPromptSystemPrompt', defaultText: DEFAULT_CROSS_PROMPT, resetId: '#pa_reset_cross_prompt' },
+        { id: '#pa_custom_individual_prompt', key: 'customIndividualSystemPrompt', defaultText: DEFAULT_INDIVIDUAL_PROMPT, resetId: '#pa_reset_individual_prompt' },
+        { id: '#pa_custom_followup_prompt', key: 'customFollowUpSystemPrompt', defaultText: DEFAULT_FOLLOWUP_PROMPT, resetId: '#pa_reset_followup_prompt' },
+    ];
+
+    for (const { id, key, defaultText, resetId } of promptFields) {
+        const $textarea = $(id);
+        $textarea.attr('placeholder', defaultText);
+        $textarea.val(settings[key] || '');
+
+        $textarea.on('input', function () {
+            const s = getSettings();
+            s[key] = $(this).val();
+            saveSettingsDebounced();
+        });
+
+        $(resetId).on('click', function () {
+            const s = getSettings();
+            s[key] = '';
+            $textarea.val('');
+            saveSettingsDebounced();
+            toastr.info('Prompt reset to default.', 'Preset Analyzer');
+        });
+    }
 
     // Bind analysis buttons
     $('#pa_run_cross_prompt').on('click', async function () {

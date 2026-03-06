@@ -5,10 +5,9 @@
 
 import { CROSS_PROMPT_SCHEMA, INDIVIDUAL_PROMPT_SCHEMA, FOLLOWUP_SCHEMA } from './schemas.js';
 
-// ─── Phase 2: Cross-Prompt Analysis ─────────────────────────────────────────
+// ─── Default System Prompts (exported for settings UI) ──────────────────────
 
-export function buildCrossPromptSystemPrompt() {
-    return `You are an expert prompt engineer analyzing a SillyTavern preset configuration. Your task is to examine the currently active/enabled prompt entries provided and identify cross-prompt issues.
+export const DEFAULT_CROSS_PROMPT = `You are an expert prompt engineer analyzing a SillyTavern preset configuration. Your task is to examine the currently active/enabled prompt entries provided and identify cross-prompt issues.
 
 You must identify issues from EXACTLY these three categories:
 
@@ -25,26 +24,9 @@ Rules:
 - Quote SPECIFIC passages from each involved prompt. Do NOT paraphrase or generalize.
 - Only analyze the prompts provided — do not infer or assume prompts that are not shown.
 - Estimate recoverable tokens conservatively.
-- Do NOT suggest rewrites in this phase — only identify and quote.
-- Return ONLY valid JSON matching this schema exactly:
+- Do NOT suggest rewrites in this phase — only identify and quote.`;
 
-${JSON.stringify(CROSS_PROMPT_SCHEMA.value, null, 2)}`;
-}
-
-export function buildCrossPromptUserPrompt(prompts) {
-    let text = 'Analyze the following active preset prompts for cross-prompt issues.\nReturn your analysis as valid JSON matching the schema described in your instructions.\n\n--- ACTIVE PROMPTS ---\n';
-
-    for (const prompt of prompts) {
-        text += `\n[Prompt - Name: "${prompt.name}" | Identifier: ${prompt.identifier}]\n${prompt.content}\n`;
-    }
-
-    return text;
-}
-
-// ─── Phase 1: Individual Prompt Analysis ────────────────────────────────────
-
-export function buildIndividualSystemPrompt() {
-    return `You are an expert prompt engineer analyzing a single prompt entry from a SillyTavern preset for internal quality issues.
+export const DEFAULT_INDIVIDUAL_PROMPT = `You are an expert prompt engineer analyzing a single prompt entry from a SillyTavern preset for internal quality issues.
 
 You must identify issues from EXACTLY these five categories:
 
@@ -68,11 +50,48 @@ Critical rewrite rules:
 - Only tighten phrasing, remove genuine redundancy, and clarify vague instructions.
 - Preserve ALL SillyTavern macros (e.g., {{char}}, {{user}}, {{persona}}) exactly as they appear.
 - If you are uncertain whether something is intentional, note it in your assumptions rather than removing it.
-- List ALL assumptions you made during the full rewrite explicitly.
+- List ALL assumptions you made during the full rewrite explicitly.`;
 
-Return ONLY valid JSON matching this schema exactly:
+export const DEFAULT_FOLLOWUP_PROMPT = `You are an expert prompt engineer performing a deep analysis of a specific cross-prompt issue in a SillyTavern preset.
 
-${JSON.stringify(INDIVIDUAL_PROMPT_SCHEMA.value, null, 2)}`;
+You are given:
+- A previously identified issue (summary provided).
+- The full text of the involved prompts.
+
+Your task:
+- Deeply analyze the relationship between the provided prompts.
+- Explain how the model likely processes and prioritizes the conflicting or redundant instructions.
+- Provide a specific actionable recommendation: consolidate, keep_both, disable_one, or rewrite.
+- Give detailed guidance on what to do.`;
+
+// ─── Schema Suffix Builders ─────────────────────────────────────────────────
+
+function appendSchema(promptText, schema) {
+    return `${promptText}\n\n- Return ONLY valid JSON matching this schema exactly:\n\n${JSON.stringify(schema, null, 2)}`;
+}
+
+// ─── Phase 2: Cross-Prompt Analysis ─────────────────────────────────────────
+
+export function buildCrossPromptSystemPrompt(customPrompt) {
+    const base = customPrompt || DEFAULT_CROSS_PROMPT;
+    return appendSchema(base, CROSS_PROMPT_SCHEMA.value);
+}
+
+export function buildCrossPromptUserPrompt(prompts) {
+    let text = 'Analyze the following active preset prompts for cross-prompt issues.\nReturn your analysis as valid JSON matching the schema described in your instructions.\n\n--- ACTIVE PROMPTS ---\n';
+
+    for (const prompt of prompts) {
+        text += `\n[Prompt - Name: "${prompt.name}" | Identifier: ${prompt.identifier}]\n${prompt.content}\n`;
+    }
+
+    return text;
+}
+
+// ─── Phase 1: Individual Prompt Analysis ────────────────────────────────────
+
+export function buildIndividualSystemPrompt(customPrompt) {
+    const base = customPrompt || DEFAULT_INDIVIDUAL_PROMPT;
+    return appendSchema(base, INDIVIDUAL_PROMPT_SCHEMA.value);
 }
 
 export function buildIndividualUserPrompt(prompt) {
@@ -88,22 +107,9 @@ ${prompt.content}`;
 
 // ─── Phase 2: Targeted Follow-Up ────────────────────────────────────────────
 
-export function buildFollowUpSystemPrompt() {
-    return `You are an expert prompt engineer performing a deep analysis of a specific cross-prompt issue in a SillyTavern preset.
-
-You are given:
-- A previously identified issue (summary provided).
-- The full text of the involved prompts.
-
-Your task:
-- Deeply analyze the relationship between the provided prompts.
-- Explain how the model likely processes and prioritizes the conflicting or redundant instructions.
-- Provide a specific actionable recommendation: consolidate, keep_both, disable_one, or rewrite.
-- Give detailed guidance on what to do.
-
-Return ONLY valid JSON matching this schema exactly:
-
-${JSON.stringify(FOLLOWUP_SCHEMA.value, null, 2)}`;
+export function buildFollowUpSystemPrompt(customPrompt) {
+    const base = customPrompt || DEFAULT_FOLLOWUP_PROMPT;
+    return appendSchema(base, FOLLOWUP_SCHEMA.value);
 }
 
 export function buildFollowUpUserPrompt(issue, promptsById) {
