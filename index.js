@@ -699,19 +699,19 @@ async function runFollowUp(issue, activePromptsById, $parentFinding) {
 
     for (const { id, key, defaultText, resetId } of promptFields) {
         const $textarea = $(id);
-        $textarea.attr('placeholder', defaultText);
-        $textarea.val(settings[key] || '');
+        $textarea.val(settings[key] || defaultText);
 
         $textarea.on('input', function () {
             const s = getSettings();
-            s[key] = $(this).val();
+            const val = $(this).val();
+            s[key] = val === defaultText ? '' : val;
             saveSettingsDebounced();
         });
 
         $(resetId).on('click', function () {
             const s = getSettings();
             s[key] = '';
-            $textarea.val('');
+            $textarea.val(defaultText);
             saveSettingsDebounced();
             toastr.info('Prompt reset to default.', 'Preset Analyzer');
         });
