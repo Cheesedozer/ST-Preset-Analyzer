@@ -623,6 +623,7 @@ async function runCrossPromptAnalysis() {
         const result = await generateRaw({
             systemPrompt,
             prompt,
+            responseLength: 15000,
         });
 
         const analysis = parseAnalysisResponse(result);
@@ -694,6 +695,7 @@ async function runIndividualAnalysis(promptIdentifier) {
             const result = await generateRaw({
                 systemPrompt,
                 prompt: userPrompt,
+                responseLength: 15000,
             });
 
             const analysis = parseAnalysisResponse(result);
@@ -730,6 +732,7 @@ async function runFollowUp(issue, activePromptsById, $parentFinding) {
         const result = await generateRaw({
             systemPrompt,
             prompt: userPrompt,
+            responseLength: 15000,
         });
 
         const followup = parseAnalysisResponse(result);
