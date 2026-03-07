@@ -416,8 +416,22 @@
     margin: 4px 0;
 }
 
+.pa_context_header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
 .pa_context_header small {
     opacity: 0.7;
+}
+
+.pa_auto_detect_btn {
+    font-size: 0.8em;
+    padding: 2px 8px;
+    margin: 0;
+    white-space: nowrap;
 }
 
 .pa_context_list {

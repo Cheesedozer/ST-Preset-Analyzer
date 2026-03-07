@@ -280,6 +280,14 @@ function getSelectedContextPrompts() {
         .filter(Boolean);
 }
 
+function detectContextPrompts(targetPrompt, allPrompts) {
+    const targetName = targetPrompt.name.toLowerCase();
+    return allPrompts.filter(p =>
+        p.identifier !== targetPrompt.identifier &&
+        p.content.toLowerCase().includes(targetName),
+    );
+}
+
 // ─── Rendering Helpers ───────────────────────────────────────────────────────
 
 const ISSUE_TYPE_LABELS = {
@@ -644,11 +652,12 @@ async function runIndividualAnalysis(promptIdentifier) {
         return;
     }
 
-    // Gather context prompts (only for single-prompt analysis)
-    const contextPrompts = promptIdentifier !== '__all__' ? getSelectedContextPrompts() : [];
+    // Gather context prompts (manual selection for single prompt, auto-detect for __all__)
+    const isAnalyzeAll = promptIdentifier === '__all__';
+    const manualContextPrompts = !isAnalyzeAll ? getSelectedContextPrompts() : [];
 
     let promptsToAnalyze;
-    if (promptIdentifier === '__all__') {
+    if (isAnalyzeAll) {
         promptsToAnalyze = allPrompts;
         $results.empty();
     } else {
@@ -667,6 +676,11 @@ async function runIndividualAnalysis(promptIdentifier) {
     for (let i = 0; i < promptsToAnalyze.length; i++) {
         const prompt = promptsToAnalyze[i];
         showProgress(`Analyzing prompt ${i + 1}/${promptsToAnalyze.length}: ${prompt.name}...`);
+
+        // For Analyze All, auto-detect context per prompt; for single, use manual selection
+        const contextPrompts = isAnalyzeAll
+            ? detectContextPrompts(prompt, allPrompts)
+            : manualContextPrompts;
 
         try {
             const userPrompt = buildIndividualUserPrompt(prompt, contextPrompts);
@@ -815,6 +829,30 @@ async function runFollowUp(issue, activePromptsById, $parentFinding) {
     populatePromptDropdown();
     $('#pa_prompt_select').on('change', function () {
         populateContextChecklist($(this).val());
+    });
+
+    // Auto-detect related context prompts
+    $('#pa_auto_detect_context').on('click', function () {
+        const selectedId = $('#pa_prompt_select').val();
+        if (!selectedId || selectedId === '__all__') return;
+
+        const allPrompts = getAllPrompts();
+        const targetPrompt = allPrompts.find(p => p.identifier === selectedId);
+        if (!targetPrompt) return;
+
+        const matches = detectContextPrompts(targetPrompt, allPrompts);
+
+        // Check matching checkboxes
+        $('#pa_context_list input').each(function () {
+            const id = $(this).data('identifier');
+            $(this).prop('checked', matches.some(m => m.identifier === id));
+        });
+
+        if (matches.length > 0) {
+            toastr.info(`Found ${matches.length} related prompt(s).`, 'Preset Analyzer');
+        } else {
+            toastr.info('No related prompts found.', 'Preset Analyzer');
+        }
     });
 
     // Refresh dropdown on relevant events
