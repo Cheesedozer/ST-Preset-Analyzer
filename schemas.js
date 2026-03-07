@@ -119,6 +119,72 @@ export const INDIVIDUAL_PROMPT_SCHEMA = {
     },
 };
 
+export const INDIVIDUAL_ISSUES_SCHEMA = {
+    name: 'IndividualPromptIssues',
+    description: 'Schema for individual prompt issue detection (no full rewrite).',
+    strict: true,
+    value: {
+        '$schema': 'http://json-schema.org/draft-04/schema#',
+        'type': 'object',
+        'properties': {
+            'analysis_type': {
+                'type': 'string',
+                'enum': ['individual_prompt'],
+            },
+            'prompt_name': { 'type': 'string' },
+            'prompt_identifier': { 'type': ['string', 'number'] },
+            'original_token_count': { 'type': 'integer' },
+            'issues': {
+                'type': 'array',
+                'items': {
+                    'type': 'object',
+                    'properties': {
+                        'type': {
+                            'type': 'string',
+                            'enum': ['internal_verbosity', 'vague_unactionable', 'internal_self_contradiction', 'dead_weight', 'structural_disorganization'],
+                        },
+                        'severity': {
+                            'type': 'string',
+                            'enum': ['high', 'medium', 'low'],
+                        },
+                        'passage': { 'type': 'string' },
+                        'explanation': { 'type': 'string' },
+                        'suggested_rewrite': { 'type': 'string' },
+                    },
+                    'required': ['type', 'severity', 'passage', 'explanation', 'suggested_rewrite'],
+                },
+            },
+        },
+        'required': ['analysis_type', 'prompt_name', 'prompt_identifier', 'original_token_count', 'issues'],
+    },
+};
+
+export const INDIVIDUAL_REWRITE_SCHEMA = {
+    name: 'IndividualPromptRewrite',
+    description: 'Schema for individual prompt full rewrite generation.',
+    strict: true,
+    value: {
+        '$schema': 'http://json-schema.org/draft-04/schema#',
+        'type': 'object',
+        'properties': {
+            'suggested_full_rewrite': {
+                'type': 'object',
+                'properties': {
+                    'text': { 'type': 'string' },
+                    'assumptions': {
+                        'type': 'array',
+                        'items': { 'type': 'string' },
+                    },
+                    'rewrite_token_count': { 'type': 'integer' },
+                    'estimated_tokens_saved': { 'type': 'integer' },
+                },
+                'required': ['text', 'assumptions', 'rewrite_token_count', 'estimated_tokens_saved'],
+            },
+        },
+        'required': ['suggested_full_rewrite'],
+    },
+};
+
 export const FOLLOWUP_SCHEMA = {
     name: 'CrossPromptFollowUp',
     description: 'Schema for targeted cross-prompt follow-up analysis.',

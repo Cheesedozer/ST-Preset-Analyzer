@@ -3,7 +3,7 @@
  * Each function returns a string to be used as system or user prompt in generateRaw().
  */
 
-import { CROSS_PROMPT_SCHEMA, INDIVIDUAL_PROMPT_SCHEMA, FOLLOWUP_SCHEMA } from './schemas.js';
+import { CROSS_PROMPT_SCHEMA, INDIVIDUAL_PROMPT_SCHEMA, INDIVIDUAL_ISSUES_SCHEMA, INDIVIDUAL_REWRITE_SCHEMA, FOLLOWUP_SCHEMA } from './schemas.js';
 
 // ─── Default System Prompts (exported for settings UI) ──────────────────────
 
@@ -51,6 +51,35 @@ Critical rewrite rules:
 - Preserve ALL SillyTavern macros (e.g., {{char}}, {{user}}, {{persona}}) exactly as they appear.
 - If you are uncertain whether something is intentional, note it in your assumptions rather than removing it.
 - List ALL assumptions you made during the full rewrite explicitly.`;
+
+export const DEFAULT_INDIVIDUAL_ISSUES_PROMPT = `You are an expert prompt engineer analyzing a single prompt entry from a SillyTavern preset for internal quality issues.
+
+You must identify issues from EXACTLY these five categories:
+
+1. **Internal Self-Contradiction** (severity: high) — The prompt contradicts itself.
+2. **Internal Verbosity** (severity: medium) — Uses significantly more tokens than needed to convey its instructions.
+3. **Vague / Unactionable Instructions** (severity: medium) — Directives too abstract for the model to meaningfully follow.
+4. **Dead Weight** (severity: medium) — Instructions the model is likely to ignore — too vague, fighting base training, impossible/never-triggered conditions.
+5. **Structural Disorganization** (severity: low) — Poor grouping or ordering of instructions within the prompt, making it harder for the model to parse.
+
+For EACH issue found:
+- Quote the SPECIFIC passage from the prompt that has the issue.
+- Explain WHY it is a problem and what impact it has on model behavior. Be educational.
+- Provide a suggested rewrite of JUST that passage that preserves the original intent while fixing the issue.
+
+Do NOT generate a full rewrite of the prompt — only identify issues and provide per-issue passage rewrites.`;
+
+export const DEFAULT_INDIVIDUAL_REWRITE_PROMPT = `You are an expert prompt engineer. You are given a prompt and a list of previously identified issues in that prompt. Your task is to generate a FULL REWRITE of the entire prompt that addresses all the identified issues simultaneously.
+
+Critical rewrite rules:
+- Your goal is to preserve the EXACT behavioral intent of the original prompt while reducing token count.
+- Do NOT change what the prompt instructs the model to do.
+- Do NOT impose your own stylistic preferences.
+- Only tighten phrasing, remove genuine redundancy, and clarify vague instructions.
+- Preserve ALL SillyTavern macros (e.g., {{char}}, {{user}}, {{persona}}) exactly as they appear.
+- If you are uncertain whether something is intentional, note it in your assumptions rather than removing it.
+- List ALL assumptions you made during the full rewrite explicitly.
+- Include the rewrite token count and estimated tokens saved compared to the original.`;
 
 export const DEFAULT_FOLLOWUP_PROMPT = `You are an expert prompt engineer performing a deep analysis of a specific cross-prompt issue in a SillyTavern preset.
 
@@ -114,6 +143,46 @@ The following additional prompts are provided as context only. Do NOT analyze th
     }
 
     return text;
+}
+
+// ─── Phase 1 Split: Issues Only ─────────────────────────────────────────────
+
+export function buildIndividualIssuesSystemPrompt(customPrompt) {
+    const base = customPrompt || DEFAULT_INDIVIDUAL_ISSUES_PROMPT;
+    return appendSchema(base, INDIVIDUAL_ISSUES_SCHEMA.value);
+}
+
+export function buildIndividualIssuesUserPrompt(prompt, contextPrompts) {
+    return buildIndividualUserPrompt(prompt, contextPrompts);
+}
+
+// ─── Phase 1 Split: Full Rewrite Only ───────────────────────────────────────
+
+export function buildIndividualRewriteSystemPrompt(customPrompt) {
+    const base = customPrompt || DEFAULT_INDIVIDUAL_REWRITE_PROMPT;
+    return appendSchema(base, INDIVIDUAL_REWRITE_SCHEMA.value);
+}
+
+export function buildIndividualRewriteUserPrompt(prompt, issues) {
+    const issuesSummary = issues.map((issue, i) => {
+        let entry = `${i + 1}. [${issue.type}] (${issue.severity})\n   Passage: "${issue.passage}"\n   Explanation: ${issue.explanation}`;
+        if (issue.suggested_rewrite) {
+            entry += `\n   Suggested rewrite: "${issue.suggested_rewrite}"`;
+        }
+        return entry;
+    }).join('\n\n');
+
+    return `Generate a full rewrite of the following prompt that addresses all the identified issues.
+Return your response as valid JSON matching the schema described in your instructions.
+
+Prompt Name: "${prompt.name}"
+Prompt Identifier: ${prompt.identifier}
+
+--- ORIGINAL PROMPT TEXT ---
+${prompt.content}
+
+--- IDENTIFIED ISSUES ---
+${issuesSummary}`;
 }
 
 // ─── Phase 2: Targeted Follow-Up ────────────────────────────────────────────
