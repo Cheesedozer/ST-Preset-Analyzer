@@ -149,19 +149,46 @@ async function countTokens(text) {
 
 // ─── JSON Response Parsing ───────────────────────────────────────────────────
 
+const TRUNCATION_WARNING = 'Analysis response appears incomplete (truncated JSON). This can happen with reasoning models that spend output tokens on internal reasoning. Try switching to a non-reasoning model (e.g., claude-sonnet-4-6) or re-running the analysis.';
+
+/**
+ * Check if a JSON string appears truncated by comparing brace/bracket counts.
+ * @param {string} text
+ * @returns {boolean}
+ */
+function looksLikeTruncatedJson(text) {
+    let braces = 0;
+    let brackets = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (const ch of text) {
+        if (escaped) { escaped = false; continue; }
+        if (ch === '\\' && inString) { escaped = true; continue; }
+        if (ch === '"') { inString = !inString; continue; }
+        if (inString) continue;
+        if (ch === '{') braces++;
+        else if (ch === '}') braces--;
+        else if (ch === '[') brackets++;
+        else if (ch === ']') brackets--;
+    }
+
+    return braces !== 0 || brackets !== 0;
+}
+
 /**
  * Parse JSON from LLM response, handling markdown fences and preamble.
  * @param {string} text
- * @returns {object|null}
+ * @returns {{result: object|null, truncated: boolean}}
  */
 function parseAnalysisResponse(text) {
-    if (!text || typeof text !== 'string') return null;
+    if (!text || typeof text !== 'string') return { result: null, truncated: false };
 
     const trimmed = text.trim();
 
     // Attempt 1: Direct parse
     try {
-        return JSON.parse(trimmed);
+        return { result: JSON.parse(trimmed), truncated: false };
     } catch {
         // Continue to next attempt
     }
@@ -170,7 +197,7 @@ function parseAnalysisResponse(text) {
     const fenceMatch = trimmed.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
     if (fenceMatch) {
         try {
-            return JSON.parse(fenceMatch[1].trim());
+            return { result: JSON.parse(fenceMatch[1].trim()), truncated: false };
         } catch {
             // Continue to next attempt
         }
@@ -180,14 +207,23 @@ function parseAnalysisResponse(text) {
     const firstBrace = trimmed.indexOf('{');
     const lastBrace = trimmed.lastIndexOf('}');
     if (firstBrace !== -1 && lastBrace > firstBrace) {
+        const extracted = trimmed.slice(firstBrace, lastBrace + 1);
         try {
-            return JSON.parse(trimmed.slice(firstBrace, lastBrace + 1));
+            return { result: JSON.parse(extracted), truncated: false };
         } catch {
-            // All attempts failed
+            // Check if it looks like truncated JSON
+            if (looksLikeTruncatedJson(extracted)) {
+                return { result: null, truncated: true };
+            }
         }
     }
 
-    return null;
+    // Check raw text for truncation (e.g., starts with { but never closes)
+    if (firstBrace !== -1 && looksLikeTruncatedJson(trimmed.slice(firstBrace))) {
+        return { result: null, truncated: true };
+    }
+
+    return { result: null, truncated: false };
 }
 
 // ─── Progress UI ─────────────────────────────────────────────────────────────
@@ -626,11 +662,15 @@ async function runCrossPromptAnalysis() {
             responseLength: 15000,
         });
 
-        const analysis = parseAnalysisResponse(result);
+        const { result: analysis, truncated } = parseAnalysisResponse(result);
 
         if (!analysis) {
-            toastr.warning('Failed to parse analysis response. The model may not have returned valid JSON.', 'Preset Analyzer');
-            $results.html(`<div class="pa_error">Failed to parse response. Raw output:<br><pre>${escapeHtml(result?.substring(0, 2000) || '(empty)')}</pre></div>`);
+            if (truncated) {
+                toastr.warning(TRUNCATION_WARNING, 'Preset Analyzer');
+            } else {
+                toastr.warning('Failed to parse analysis response. The model may not have returned valid JSON.', 'Preset Analyzer');
+            }
+            $results.html(`<div class="pa_error">${truncated ? escapeHtml(TRUNCATION_WARNING) : 'Failed to parse response.'} Raw output:<br><pre>${escapeHtml(result?.substring(0, 2000) || '(empty)')}</pre></div>`);
             return;
         }
 
@@ -698,10 +738,12 @@ async function runIndividualAnalysis(promptIdentifier) {
                 responseLength: 15000,
             });
 
-            const analysis = parseAnalysisResponse(result);
+            const { result: analysis, truncated } = parseAnalysisResponse(result);
 
             if (!analysis) {
-                $results.append(`<div class="pa_error">Failed to parse response for "${escapeHtml(prompt.name)}". Raw output:<br><pre>${escapeHtml(result?.substring(0, 1000) || '(empty)')}</pre></div>`);
+                const msg = truncated ? TRUNCATION_WARNING : `Failed to parse response for "${escapeHtml(prompt.name)}".`;
+                if (truncated) toastr.warning(TRUNCATION_WARNING, 'Preset Analyzer');
+                $results.append(`<div class="pa_error">${escapeHtml(msg)} Raw output:<br><pre>${escapeHtml(result?.substring(0, 1000) || '(empty)')}</pre></div>`);
                 continue;
             }
 
@@ -735,7 +777,10 @@ async function runFollowUp(issue, activePromptsById, $parentFinding) {
             responseLength: 15000,
         });
 
-        const followup = parseAnalysisResponse(result);
+        const { result: followup, truncated } = parseAnalysisResponse(result);
+        if (truncated) {
+            $parentFinding.append(`<div class="pa_error">${escapeHtml(TRUNCATION_WARNING)}</div>`);
+        }
         renderFollowUpResults($parentFinding, followup);
     } catch (error) {
         console.error(`[${MODULE_NAME}] Follow-up analysis error:`, error);
