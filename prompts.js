@@ -94,8 +94,8 @@ export function buildIndividualSystemPrompt(customPrompt) {
     return appendSchema(base, INDIVIDUAL_PROMPT_SCHEMA.value);
 }
 
-export function buildIndividualUserPrompt(prompt) {
-    return `Analyze the following prompt entry for internal quality issues.
+export function buildIndividualUserPrompt(prompt, contextPrompts) {
+    let text = `Analyze the following prompt entry for internal quality issues.
 Return your analysis as valid JSON matching the schema described in your instructions.
 
 Prompt Name: "${prompt.name}"
@@ -103,6 +103,17 @@ Prompt Identifier: ${prompt.identifier}
 
 --- PROMPT TEXT ---
 ${prompt.content}`;
+
+    if (contextPrompts && contextPrompts.length > 0) {
+        text += `\n\n--- CONTEXT PROMPTS ---
+The following additional prompts are provided as context only. Do NOT analyze them. Use them solely to inform your understanding of the target prompt's intent, references, and how it fits within the broader preset.\n`;
+
+        for (const ctx of contextPrompts) {
+            text += `\n[Context Prompt - Name: "${ctx.name}" | Identifier: ${ctx.identifier}]\n${ctx.content}\n`;
+        }
+    }
+
+    return text;
 }
 
 // ─── Phase 2: Targeted Follow-Up ────────────────────────────────────────────
