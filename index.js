@@ -743,6 +743,17 @@ async function runIndividualAnalysis(promptIdentifier) {
         try {
             const userPrompt = buildIndividualIssuesUserPrompt(prompt, contextPrompts);
 
+            // Debug logging — verify prompt content before sending
+            console.log(`[${MODULE_NAME}] Analyzing prompt:`, JSON.stringify({ name: prompt.name, identifier: prompt.identifier, contentLength: prompt.content?.length }));
+            console.log(`[${MODULE_NAME}] Call 1 - systemPrompt length: ${issuesSystemPrompt?.length}, prompt length: ${userPrompt?.length}`);
+            console.log(`[${MODULE_NAME}] Call 1 - systemPrompt preview:`, issuesSystemPrompt?.substring(0, 200));
+            console.log(`[${MODULE_NAME}] Call 1 - prompt preview:`, userPrompt?.substring(0, 200));
+
+            if (!issuesSystemPrompt || !userPrompt) {
+                console.error(`[${MODULE_NAME}] Call 1 - EMPTY PROMPT DETECTED. systemPrompt: ${!!issuesSystemPrompt}, userPrompt: ${!!userPrompt}`);
+                console.error(`[${MODULE_NAME}] Prompt object:`, JSON.stringify(prompt));
+            }
+
             const result = await generateRaw({
                 systemPrompt: issuesSystemPrompt,
                 prompt: userPrompt,
@@ -775,6 +786,8 @@ async function runIndividualAnalysis(promptIdentifier) {
         try {
             const rewriteSystemPrompt = buildIndividualRewriteSystemPrompt();
             const rewriteUserPrompt = buildIndividualRewriteUserPrompt(prompt, analysis.issues || []);
+
+            console.log(`[${MODULE_NAME}] Call 2 - systemPrompt length: ${rewriteSystemPrompt?.length}, prompt length: ${rewriteUserPrompt?.length}`);
 
             const rewriteResult = await generateRaw({
                 systemPrompt: rewriteSystemPrompt,
