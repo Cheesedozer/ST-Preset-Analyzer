@@ -156,6 +156,25 @@ export function buildIndividualIssuesUserPrompt(prompt, contextPrompts) {
     return buildIndividualUserPrompt(prompt, contextPrompts);
 }
 
+// ─── Phase 1 Split: Single Issue Type ───────────────────────────────────────
+
+export function buildSingleIssueTypeIssuesSystemPrompt(issueTypeDef) {
+    const base = `You are an expert prompt engineer analyzing a single prompt entry from a SillyTavern preset for one specific type of internal quality issue.
+
+You must search for ONLY this issue type:
+
+**${issueTypeDef.label}** (severity: ${issueTypeDef.severity}) — ${issueTypeDef.description}
+
+For EACH instance found:
+- Quote the SPECIFIC passage from the prompt that has the issue.
+- Explain WHY it is a problem and what impact it has on model behavior. Be educational.
+- Provide a suggested rewrite of JUST that passage that preserves the original intent while fixing the issue.
+
+Do NOT look for any other issue types. Do NOT generate a full rewrite.
+If no issues of this type are found, return an empty issues array.`;
+    return appendSchema(base, INDIVIDUAL_ISSUES_SCHEMA.value);
+}
+
 // ─── Phase 1 Split: Full Rewrite Only ───────────────────────────────────────
 
 export function buildIndividualRewriteSystemPrompt(customPrompt) {

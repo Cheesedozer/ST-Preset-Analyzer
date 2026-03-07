@@ -11,6 +11,7 @@ import {
     buildIndividualUserPrompt,
     buildIndividualIssuesSystemPrompt,
     buildIndividualIssuesUserPrompt,
+    buildSingleIssueTypeIssuesSystemPrompt,
     buildIndividualRewriteSystemPrompt,
     buildIndividualRewriteUserPrompt,
     buildFollowUpSystemPrompt,
@@ -27,6 +28,7 @@ const EXTENSION_FOLDER = 'ST-Preset-Analyzer';
 const defaultSettings = Object.freeze({
     crossPromptEnabled: true,
     individualEnabled: true,
+    detailedMode: false,
     customCrossPromptSystemPrompt: '',
     customIndividualSystemPrompt: '',
     customFollowUpSystemPrompt: '',
@@ -333,6 +335,21 @@ function detectContextPrompts(targetPrompt, allPrompts, searchTerm) {
         p.content.toLowerCase().includes(term),
     );
 }
+
+// ─── Individual Issue Type Definitions (for Detailed Mode) ──────────────────
+
+const INDIVIDUAL_ISSUE_TYPES = [
+    { type: 'internal_self_contradiction', label: 'Internal Self-Contradiction', severity: 'high',
+        description: 'The prompt contradicts itself.' },
+    { type: 'internal_verbosity', label: 'Internal Verbosity', severity: 'medium',
+        description: 'Uses significantly more tokens than needed to convey its instructions.' },
+    { type: 'vague_unactionable', label: 'Vague / Unactionable Instructions', severity: 'medium',
+        description: 'Directives too abstract for the model to meaningfully follow.' },
+    { type: 'dead_weight', label: 'Dead Weight', severity: 'medium',
+        description: 'Instructions the model is likely to ignore — too vague, fighting base training, impossible/never-triggered conditions.' },
+    { type: 'structural_disorganization', label: 'Structural Disorganization', severity: 'low',
+        description: 'Poor grouping or ordering of instructions within the prompt, making it harder for the model to parse.' },
+];
 
 // ─── Rendering Helpers ───────────────────────────────────────────────────────
 
@@ -725,7 +742,7 @@ async function runIndividualAnalysis(promptIdentifier) {
     }
 
     const settings = getSettings();
-    const issuesSystemPrompt = buildIndividualIssuesSystemPrompt(settings.customIndividualSystemPrompt || undefined);
+    const useDetailedMode = settings.detailedMode;
 
     for (let i = 0; i < promptsToAnalyze.length; i++) {
         const prompt = promptsToAnalyze[i];
@@ -736,49 +753,20 @@ async function runIndividualAnalysis(promptIdentifier) {
             ? detectContextPrompts(prompt, allPrompts)
             : manualContextPrompts;
 
-        // ── Call 1: Issue Detection ──
-        showProgress(`Identifying issues in prompt ${promptLabel}...`);
+        const userPrompt = buildIndividualIssuesUserPrompt(prompt, contextPrompts);
 
+        // ── Issue Detection ──
         let analysis;
-        try {
-            const userPrompt = buildIndividualIssuesUserPrompt(prompt, contextPrompts);
 
-            // Debug logging — verify prompt content before sending
-            console.log(`[${MODULE_NAME}] Analyzing prompt:`, JSON.stringify({ name: prompt.name, identifier: prompt.identifier, contentLength: prompt.content?.length }));
-            console.log(`[${MODULE_NAME}] Call 1 - systemPrompt length: ${issuesSystemPrompt?.length}, prompt length: ${userPrompt?.length}`);
-            console.log(`[${MODULE_NAME}] Call 1 - systemPrompt preview:`, issuesSystemPrompt?.substring(0, 200));
-            console.log(`[${MODULE_NAME}] Call 1 - prompt preview:`, userPrompt?.substring(0, 200));
-
-            if (!issuesSystemPrompt || !userPrompt) {
-                console.error(`[${MODULE_NAME}] Call 1 - EMPTY PROMPT DETECTED. systemPrompt: ${!!issuesSystemPrompt}, userPrompt: ${!!userPrompt}`);
-                console.error(`[${MODULE_NAME}] Prompt object:`, JSON.stringify(prompt));
-            }
-
-            const result = await generateRaw({
-                systemPrompt: issuesSystemPrompt,
-                prompt: userPrompt,
-                responseLength: 15000,
-            });
-
-            const { result: parsed, truncated } = parseAnalysisResponse(result);
-
-            if (!parsed) {
-                const msg = truncated ? TRUNCATION_WARNING : `Failed to parse issue detection response for "${escapeHtml(prompt.name)}".`;
-                if (truncated) toastr.warning(TRUNCATION_WARNING, 'Preset Analyzer');
-                $results.append(`<div class="pa_error">${escapeHtml(msg)} Raw output:<br><pre>${escapeHtml(result?.substring(0, 1000) || '(empty)')}</pre></div>`);
-                continue;
-            }
-
-            analysis = parsed;
-
-            // Ensure prompt metadata is populated
-            if (!analysis.prompt_name) analysis.prompt_name = prompt.name;
-            if (!analysis.prompt_identifier) analysis.prompt_identifier = prompt.identifier;
-        } catch (error) {
-            console.error(`[${MODULE_NAME}] Individual analysis (issues) error for ${prompt.name}:`, error);
-            $results.append(`<div class="pa_error">Issue detection failed for "${escapeHtml(prompt.name)}": ${escapeHtml(error.message)}</div>`);
-            continue;
+        if (useDetailedMode) {
+            // Detailed Mode: separate call per issue type
+            analysis = await runDetailedIssueDetection(generateRaw, prompt, userPrompt, promptLabel, $results);
+        } else {
+            // Standard Mode: single call for all issue types
+            analysis = await runStandardIssueDetection(generateRaw, prompt, userPrompt, promptLabel, settings, $results);
         }
+
+        if (!analysis) continue;
 
         // ── Call 2: Full Rewrite ──
         showProgress(`Generating full rewrite for prompt ${promptLabel}...`);
@@ -786,8 +774,6 @@ async function runIndividualAnalysis(promptIdentifier) {
         try {
             const rewriteSystemPrompt = buildIndividualRewriteSystemPrompt();
             const rewriteUserPrompt = buildIndividualRewriteUserPrompt(prompt, analysis.issues || []);
-
-            console.log(`[${MODULE_NAME}] Call 2 - systemPrompt length: ${rewriteSystemPrompt?.length}, prompt length: ${rewriteUserPrompt?.length}`);
 
             const rewriteResult = await generateRaw({
                 systemPrompt: rewriteSystemPrompt,
@@ -816,6 +802,88 @@ async function runIndividualAnalysis(promptIdentifier) {
     }
 
     hideProgress();
+}
+
+async function runStandardIssueDetection(generateRaw, prompt, userPrompt, promptLabel, settings, $results) {
+    showProgress(`Identifying issues in prompt ${promptLabel}...`);
+
+    try {
+        const issuesSystemPrompt = buildIndividualIssuesSystemPrompt(settings.customIndividualSystemPrompt || undefined);
+
+        const result = await generateRaw({
+            systemPrompt: issuesSystemPrompt,
+            prompt: userPrompt,
+            responseLength: 15000,
+        });
+
+        const { result: parsed, truncated } = parseAnalysisResponse(result);
+
+        if (!parsed) {
+            const msg = truncated ? TRUNCATION_WARNING : `Failed to parse issue detection response for "${escapeHtml(prompt.name)}".`;
+            if (truncated) toastr.warning(TRUNCATION_WARNING, 'Preset Analyzer');
+            $results.append(`<div class="pa_error">${escapeHtml(msg)} Raw output:<br><pre>${escapeHtml(result?.substring(0, 1000) || '(empty)')}</pre></div>`);
+            return null;
+        }
+
+        if (!parsed.prompt_name) parsed.prompt_name = prompt.name;
+        if (!parsed.prompt_identifier) parsed.prompt_identifier = prompt.identifier;
+        return parsed;
+    } catch (error) {
+        console.error(`[${MODULE_NAME}] Individual analysis (issues) error for ${prompt.name}:`, error);
+        $results.append(`<div class="pa_error">Issue detection failed for "${escapeHtml(prompt.name)}": ${escapeHtml(error.message)}</div>`);
+        return null;
+    }
+}
+
+async function runDetailedIssueDetection(generateRaw, prompt, userPrompt, promptLabel, $results) {
+    const mergedIssues = [];
+    let originalTokenCount = null;
+
+    for (let j = 0; j < INDIVIDUAL_ISSUE_TYPES.length; j++) {
+        const issueTypeDef = INDIVIDUAL_ISSUE_TYPES[j];
+        showProgress(`Analyzing: ${issueTypeDef.label} (${j + 1}/${INDIVIDUAL_ISSUE_TYPES.length}) — prompt ${promptLabel}...`);
+
+        try {
+            const systemPrompt = buildSingleIssueTypeIssuesSystemPrompt(issueTypeDef);
+
+            const result = await generateRaw({
+                systemPrompt,
+                prompt: userPrompt,
+                responseLength: 15000,
+            });
+
+            const { result: parsed, truncated } = parseAnalysisResponse(result);
+
+            if (!parsed) {
+                if (truncated) {
+                    console.warn(`[${MODULE_NAME}] Truncated response for ${issueTypeDef.type} on ${prompt.name}`);
+                }
+                continue;
+            }
+
+            if (parsed.issues && parsed.issues.length > 0) {
+                mergedIssues.push(...parsed.issues);
+            }
+            if (parsed.original_token_count && !originalTokenCount) {
+                originalTokenCount = parsed.original_token_count;
+            }
+        } catch (error) {
+            console.error(`[${MODULE_NAME}] Detailed analysis (${issueTypeDef.type}) error for ${prompt.name}:`, error);
+        }
+    }
+
+    if (mergedIssues.length === 0 && !originalTokenCount) {
+        // All calls failed or found nothing — check if ALL calls failed
+        $results.append(`<div class="pa_error">Detailed issue detection returned no results for "${escapeHtml(prompt.name)}".</div>`);
+    }
+
+    return {
+        analysis_type: 'individual_prompt',
+        prompt_name: prompt.name,
+        prompt_identifier: prompt.identifier,
+        original_token_count: originalTokenCount,
+        issues: mergedIssues,
+    };
 }
 
 async function runFollowUp(issue, activePromptsById, $parentFinding) {
@@ -881,6 +949,13 @@ async function runFollowUp(issue, activePromptsById, $parentFinding) {
         s.individualEnabled = $(this).prop('checked');
         saveSettingsDebounced();
         updateSectionVisibility();
+    });
+
+    $('#pa_detailed_mode').prop('checked', settings.detailedMode);
+    $('#pa_detailed_mode').on('change', function () {
+        const s = getSettings();
+        s.detailedMode = $(this).prop('checked');
+        saveSettingsDebounced();
     });
 
     // Sync custom prompt textareas with settings
