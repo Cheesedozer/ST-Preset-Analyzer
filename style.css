@@ -388,6 +388,13 @@
     margin-bottom: 4px;
 }
 
+.pa_model_hint {
+    display: block;
+    opacity: 0.6;
+    font-style: italic;
+    margin-top: 4px;
+}
+
 .pa_prompt_group {
     display: flex;
     flex-direction: column;
