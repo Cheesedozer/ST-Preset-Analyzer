@@ -264,6 +264,12 @@ function populateContextChecklist(selectedIdentifier) {
     }
 
     $container.show();
+
+    // Pre-fill the auto-detect search input with the selected prompt's name
+    const targetPrompt = getAllPrompts().find(p => p.identifier === selectedIdentifier);
+    if (targetPrompt) {
+        $('#pa_auto_detect_search').val(targetPrompt.name);
+    }
 }
 
 function getSelectedContextPrompts() {
@@ -280,11 +286,11 @@ function getSelectedContextPrompts() {
         .filter(Boolean);
 }
 
-function detectContextPrompts(targetPrompt, allPrompts) {
-    const targetName = targetPrompt.name.toLowerCase();
+function detectContextPrompts(targetPrompt, allPrompts, searchTerm) {
+    const term = (searchTerm || targetPrompt.name).toLowerCase();
     return allPrompts.filter(p =>
         p.identifier !== targetPrompt.identifier &&
-        p.content.toLowerCase().includes(targetName),
+        p.content.toLowerCase().includes(term),
     );
 }
 
@@ -840,7 +846,8 @@ async function runFollowUp(issue, activePromptsById, $parentFinding) {
         const targetPrompt = allPrompts.find(p => p.identifier === selectedId);
         if (!targetPrompt) return;
 
-        const matches = detectContextPrompts(targetPrompt, allPrompts);
+        const searchTerm = $('#pa_auto_detect_search').val().trim();
+        const matches = detectContextPrompts(targetPrompt, allPrompts, searchTerm || undefined);
 
         // Check matching checkboxes
         $('#pa_context_list input').each(function () {

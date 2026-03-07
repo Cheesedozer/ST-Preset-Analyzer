@@ -427,6 +427,11 @@
     opacity: 0.7;
 }
 
+.pa_auto_detect_search {
+    font-size: 0.85em;
+    margin: 4px 0;
+}
+
 .pa_auto_detect_btn {
     font-size: 0.8em;
     padding: 2px 8px;
