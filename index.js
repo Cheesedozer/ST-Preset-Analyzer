@@ -231,6 +231,53 @@ function populatePromptDropdown() {
     if (currentVal && $select.find(`option[value="${currentVal}"]`).length) {
         $select.val(currentVal);
     }
+
+    // Update context checklist for current selection
+    populateContextChecklist($select.val());
+}
+
+function populateContextChecklist(selectedIdentifier) {
+    const $container = $('#pa_context_prompts');
+    const $list = $('#pa_context_list');
+    $list.empty();
+
+    // Only show for single prompt selection (not __all__ or empty)
+    if (!selectedIdentifier || selectedIdentifier === '__all__') {
+        $container.hide();
+        return;
+    }
+
+    const prompts = getAllPrompts().filter(p => p.identifier !== selectedIdentifier);
+    if (prompts.length === 0) {
+        $container.hide();
+        return;
+    }
+
+    for (const prompt of prompts) {
+        const id = `pa_ctx_${prompt.identifier}`;
+        $list.append(`
+            <label class="checkbox_label pa_context_item" for="${id}">
+                <input id="${id}" type="checkbox" data-identifier="${escapeHtml(prompt.identifier)}" />
+                <span>${escapeHtml(prompt.name)}</span>
+            </label>
+        `);
+    }
+
+    $container.show();
+}
+
+function getSelectedContextPrompts() {
+    const checked = [];
+    $('#pa_context_list input:checked').each(function () {
+        checked.push($(this).data('identifier'));
+    });
+
+    if (checked.length === 0) return [];
+
+    const allPrompts = getAllPrompts();
+    return checked
+        .map(id => allPrompts.find(p => p.identifier === id))
+        .filter(Boolean);
 }
 
 // ─── Rendering Helpers ───────────────────────────────────────────────────────
@@ -400,7 +447,7 @@ function renderFollowUpResults($parentFinding, followup) {
 
 // ─── Individual Prompt Results Rendering ─────────────────────────────────────
 
-function renderIndividualResults(analysis) {
+function renderIndividualResults(analysis, contextNames) {
     const $container = $('<div class="pa_individual_result"></div>');
 
     const promptLabel = analysis.prompt_name || analysis.prompt_identifier || 'Unknown';
@@ -413,6 +460,11 @@ function renderIndividualResults(analysis) {
     `);
 
     const $body = $('<div class="pa_individual_result_body"></div>');
+
+    // Context tag
+    if (contextNames && contextNames.length > 0) {
+        $body.append(`<div class="pa_context_tag">Analyzed with context from: ${contextNames.map(n => escapeHtml(n)).join(', ')}</div>`);
+    }
 
     if (!analysis.issues || analysis.issues.length === 0) {
         $body.append('<div class="pa_no_issues">No issues found in this prompt.</div>');
@@ -592,6 +644,9 @@ async function runIndividualAnalysis(promptIdentifier) {
         return;
     }
 
+    // Gather context prompts (only for single-prompt analysis)
+    const contextPrompts = promptIdentifier !== '__all__' ? getSelectedContextPrompts() : [];
+
     let promptsToAnalyze;
     if (promptIdentifier === '__all__') {
         promptsToAnalyze = allPrompts;
@@ -614,7 +669,7 @@ async function runIndividualAnalysis(promptIdentifier) {
         showProgress(`Analyzing prompt ${i + 1}/${promptsToAnalyze.length}: ${prompt.name}...`);
 
         try {
-            const userPrompt = buildIndividualUserPrompt(prompt);
+            const userPrompt = buildIndividualUserPrompt(prompt, contextPrompts);
 
             const result = await generateRaw({
                 systemPrompt,
@@ -632,7 +687,8 @@ async function runIndividualAnalysis(promptIdentifier) {
             if (!analysis.prompt_name) analysis.prompt_name = prompt.name;
             if (!analysis.prompt_identifier) analysis.prompt_identifier = prompt.identifier;
 
-            const $promptResult = renderIndividualResults(analysis);
+            const contextNames = contextPrompts.map(p => p.name);
+            const $promptResult = renderIndividualResults(analysis, contextNames);
             $results.append($promptResult);
         } catch (error) {
             console.error(`[${MODULE_NAME}] Individual analysis error for ${prompt.name}:`, error);
@@ -755,8 +811,11 @@ async function runFollowUp(issue, activePromptsById, $parentFinding) {
         }
     });
 
-    // Populate prompt dropdown
+    // Populate prompt dropdown and bind context checklist update
     populatePromptDropdown();
+    $('#pa_prompt_select').on('change', function () {
+        populateContextChecklist($(this).val());
+    });
 
     // Refresh dropdown on relevant events
     eventSource.on(event_types.CHAT_CHANGED, () => populatePromptDropdown());
