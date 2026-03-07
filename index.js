@@ -467,7 +467,21 @@ function renderIndividualResults(analysis) {
     if (analysis.suggested_full_rewrite && analysis.suggested_full_rewrite.text) {
         const rewrite = analysis.suggested_full_rewrite;
 
-        $body.append('<div class="pa_section_header">Full Rewrite</div>');
+        const $rewriteHeader = $('<div class="pa_section_header pa_rewrite_header_row">Full Rewrite</div>');
+        const $copyBtn = $('<button class="menu_button pa_copy_rewrite_btn" title="Copy clean rewrite to clipboard"><i class="fa-solid fa-copy"></i> <span>Copy Rewrite</span></button>');
+        $copyBtn.on('click', async function (e) {
+            e.stopPropagation();
+            try {
+                await navigator.clipboard.writeText(rewrite.text);
+                const $span = $(this).find('span');
+                $span.text('Copied!');
+                setTimeout(() => $span.text('Copy Rewrite'), 1500);
+            } catch {
+                toastr.error('Failed to copy to clipboard.', 'Preset Analyzer');
+            }
+        });
+        $rewriteHeader.append($copyBtn);
+        $body.append($rewriteHeader);
 
         // Token savings
         const tokenInfo = [];

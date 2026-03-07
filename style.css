@@ -209,6 +209,21 @@
     border: 1px solid rgba(25, 135, 84, 0.35);
 }
 
+/* ─── Copy Rewrite Button ─────────────────────────────────────────────────── */
+
+.pa_rewrite_header_row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.pa_copy_rewrite_btn {
+    font-size: 0.8em;
+    padding: 2px 8px;
+    margin: 0;
+    white-space: nowrap;
+}
+
 /* ─── Diff View ───────────────────────────────────────────────────────────── */
 
 .pa_diff_container {
