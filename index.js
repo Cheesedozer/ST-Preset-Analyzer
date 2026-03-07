@@ -9,6 +9,10 @@ import {
     buildCrossPromptUserPrompt,
     buildIndividualSystemPrompt,
     buildIndividualUserPrompt,
+    buildIndividualIssuesSystemPrompt,
+    buildIndividualIssuesUserPrompt,
+    buildIndividualRewriteSystemPrompt,
+    buildIndividualRewriteUserPrompt,
     buildFollowUpSystemPrompt,
     buildFollowUpUserPrompt,
     DEFAULT_CROSS_PROMPT,
@@ -566,7 +570,10 @@ function renderIndividualResults(analysis, contextNames) {
     }
 
     // Full rewrite section
-    if (analysis.suggested_full_rewrite && analysis.suggested_full_rewrite.text) {
+    if (analysis.rewrite_failed) {
+        $body.append('<div class="pa_section_header">Full Rewrite</div>');
+        $body.append('<div class="pa_error">Full rewrite generation failed. Per-issue rewrites are still available above.</div>');
+    } else if (analysis.suggested_full_rewrite && analysis.suggested_full_rewrite.text) {
         const rewrite = analysis.suggested_full_rewrite;
 
         const $rewriteHeader = $('<div class="pa_section_header pa_rewrite_header_row">Full Rewrite</div>');
@@ -718,46 +725,81 @@ async function runIndividualAnalysis(promptIdentifier) {
     }
 
     const settings = getSettings();
-    const systemPrompt = buildIndividualSystemPrompt(settings.customIndividualSystemPrompt || undefined);
+    const issuesSystemPrompt = buildIndividualIssuesSystemPrompt(settings.customIndividualSystemPrompt || undefined);
 
     for (let i = 0; i < promptsToAnalyze.length; i++) {
         const prompt = promptsToAnalyze[i];
-        showProgress(`Analyzing prompt ${i + 1}/${promptsToAnalyze.length}: ${prompt.name}...`);
+        const promptLabel = `${i + 1}/${promptsToAnalyze.length}: ${prompt.name}`;
 
         // For Analyze All, auto-detect context per prompt; for single, use manual selection
         const contextPrompts = isAnalyzeAll
             ? detectContextPrompts(prompt, allPrompts)
             : manualContextPrompts;
 
+        // ── Call 1: Issue Detection ──
+        showProgress(`Identifying issues in prompt ${promptLabel}...`);
+
+        let analysis;
         try {
-            const userPrompt = buildIndividualUserPrompt(prompt, contextPrompts);
+            const userPrompt = buildIndividualIssuesUserPrompt(prompt, contextPrompts);
 
             const result = await generateRaw({
-                systemPrompt,
+                systemPrompt: issuesSystemPrompt,
                 prompt: userPrompt,
                 responseLength: 15000,
             });
 
-            const { result: analysis, truncated } = parseAnalysisResponse(result);
+            const { result: parsed, truncated } = parseAnalysisResponse(result);
 
-            if (!analysis) {
-                const msg = truncated ? TRUNCATION_WARNING : `Failed to parse response for "${escapeHtml(prompt.name)}".`;
+            if (!parsed) {
+                const msg = truncated ? TRUNCATION_WARNING : `Failed to parse issue detection response for "${escapeHtml(prompt.name)}".`;
                 if (truncated) toastr.warning(TRUNCATION_WARNING, 'Preset Analyzer');
                 $results.append(`<div class="pa_error">${escapeHtml(msg)} Raw output:<br><pre>${escapeHtml(result?.substring(0, 1000) || '(empty)')}</pre></div>`);
                 continue;
             }
 
+            analysis = parsed;
+
             // Ensure prompt metadata is populated
             if (!analysis.prompt_name) analysis.prompt_name = prompt.name;
             if (!analysis.prompt_identifier) analysis.prompt_identifier = prompt.identifier;
-
-            const contextNames = contextPrompts.map(p => p.name);
-            const $promptResult = renderIndividualResults(analysis, contextNames);
-            $results.append($promptResult);
         } catch (error) {
-            console.error(`[${MODULE_NAME}] Individual analysis error for ${prompt.name}:`, error);
-            $results.append(`<div class="pa_error">Analysis failed for "${escapeHtml(prompt.name)}": ${escapeHtml(error.message)}</div>`);
+            console.error(`[${MODULE_NAME}] Individual analysis (issues) error for ${prompt.name}:`, error);
+            $results.append(`<div class="pa_error">Issue detection failed for "${escapeHtml(prompt.name)}": ${escapeHtml(error.message)}</div>`);
+            continue;
         }
+
+        // ── Call 2: Full Rewrite ──
+        showProgress(`Generating full rewrite for prompt ${promptLabel}...`);
+
+        try {
+            const rewriteSystemPrompt = buildIndividualRewriteSystemPrompt();
+            const rewriteUserPrompt = buildIndividualRewriteUserPrompt(prompt, analysis.issues || []);
+
+            const rewriteResult = await generateRaw({
+                systemPrompt: rewriteSystemPrompt,
+                prompt: rewriteUserPrompt,
+                responseLength: 15000,
+            });
+
+            const { result: rewriteParsed, truncated: rewriteTruncated } = parseAnalysisResponse(rewriteResult);
+
+            if (rewriteParsed && rewriteParsed.suggested_full_rewrite) {
+                analysis.suggested_full_rewrite = rewriteParsed.suggested_full_rewrite;
+            } else {
+                if (rewriteTruncated) {
+                    toastr.warning('Full rewrite response was truncated. Per-issue rewrites are still available.', 'Preset Analyzer');
+                }
+                analysis.rewrite_failed = true;
+            }
+        } catch (error) {
+            console.error(`[${MODULE_NAME}] Individual analysis (rewrite) error for ${prompt.name}:`, error);
+            analysis.rewrite_failed = true;
+        }
+
+        const contextNames = contextPrompts.map(p => p.name);
+        const $promptResult = renderIndividualResults(analysis, contextNames);
+        $results.append($promptResult);
     }
 
     hideProgress();
