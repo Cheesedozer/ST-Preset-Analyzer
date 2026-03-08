@@ -23,6 +23,7 @@ You must identify issues from EXACTLY these three categories:
 Rules:
 - Quote SPECIFIC passages from each involved prompt. Do NOT paraphrase or generalize.
 - Only analyze the prompts provided — do not infer or assume prompts that are not shown.
+- Some prompts may be marked as Inactive. Include them in your analysis but note in each finding whether the involved prompts are active or inactive, as inactive prompts do not currently affect model behavior.
 - Estimate recoverable tokens conservatively.
 - Do NOT suggest rewrites in this phase — only identify and quote.`;
 
@@ -107,10 +108,11 @@ export function buildCrossPromptSystemPrompt(customPrompt) {
 }
 
 export function buildCrossPromptUserPrompt(prompts) {
-    let text = 'Analyze the following active preset prompts for cross-prompt issues.\nReturn your analysis as valid JSON matching the schema described in your instructions.\n\n--- ACTIVE PROMPTS ---\n';
+    let text = 'Analyze the following preset prompts for cross-prompt issues.\nReturn your analysis as valid JSON matching the schema described in your instructions.\n\n--- PROMPTS ---\n';
 
     for (const prompt of prompts) {
-        text += `\n[Prompt - Name: "${prompt.name}" | Identifier: ${prompt.identifier}]\n${prompt.content}\n`;
+        const statusLabel = prompt.status ? ` | Status: ${prompt.status}` : '';
+        text += `\n[Prompt - Name: "${prompt.name}" | Identifier: ${prompt.identifier}${statusLabel}]\n${prompt.content}\n`;
     }
 
     return text;
