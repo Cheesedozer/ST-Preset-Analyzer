@@ -96,7 +96,7 @@ Your task:
 // ─── Schema Suffix Builders ─────────────────────────────────────────────────
 
 function appendSchema(promptText, schema) {
-    return `${promptText}\n\n- Return ONLY the raw JSON object matching this schema exactly. Do not wrap it in markdown code fences. Do not include any text before or after the JSON.\n\n${JSON.stringify(schema, null, 2)}`;
+    return `${promptText}\n\n- Any text wrapped in [[MACRO:...:ENDMACRO]] (e.g., [[MACRO:user:ENDMACRO]], [[MACRO:char:ENDMACRO]]) represents a template variable placeholder. Preserve these EXACTLY as-is in any suggested rewrites. Do not modify, remove, or expand them.\n\n- Return ONLY the raw JSON object matching this schema exactly. Do not wrap it in markdown code fences. Do not include any text before or after the JSON.\n\n${JSON.stringify(schema, null, 2)}`;
 }
 
 // ─── Phase 2: Cross-Prompt Analysis ─────────────────────────────────────────
