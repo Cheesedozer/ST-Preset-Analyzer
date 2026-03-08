@@ -464,6 +464,13 @@
 
 /* ─── Context Tag on Results ─────────────────────────────────────────────── */
 
+.pa_inactive_tag {
+    font-size: 0.8em;
+    color: var(--SmartThemeQuoteColor, #888);
+    font-style: italic;
+    margin-left: 4px;
+}
+
 .pa_context_tag {
     font-size: 0.85em;
     font-style: italic;

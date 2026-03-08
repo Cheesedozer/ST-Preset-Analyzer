@@ -29,6 +29,7 @@ const defaultSettings = Object.freeze({
     crossPromptEnabled: true,
     individualEnabled: true,
     detailedMode: false,
+    includeInactive: false,
     customCrossPromptSystemPrompt: '',
     customIndividualSystemPrompt: '',
     customFollowUpSystemPrompt: '',
@@ -127,6 +128,30 @@ function getAllPrompts() {
             }));
     } catch (error) {
         console.error(`[${MODULE_NAME}] Error getting all prompts:`, error);
+        return [];
+    }
+}
+
+/**
+ * Get all prompts (including disabled) with active/inactive status.
+ * @returns {Array<{identifier: string, name: string, content: string, role: string, status: string}>}
+ */
+function getAllPromptsWithStatus() {
+    const allPrompts = getRawPrompts();
+    if (!allPrompts) return [];
+
+    try {
+        return allPrompts
+            .filter(p => !p.marker && p.content && p.content.trim().length > 0)
+            .map(p => ({
+                identifier: p.identifier,
+                name: p.name || p.identifier,
+                content: p.content,
+                role: p.role || 'system',
+                status: promptManager.isPromptDisabledForActiveCharacter(p.identifier) ? 'Inactive' : 'Active',
+            }));
+    } catch (error) {
+        console.error(`[${MODULE_NAME}] Error getting all prompts with status:`, error);
         return [];
     }
 }
@@ -504,8 +529,10 @@ function renderCrossPromptFinding(issue, activePromptsById) {
 
     // Involved prompts with passages
     for (const involved of (issue.involved_prompts || [])) {
+        const promptData = activePromptsById[involved.prompt_identifier];
+        const statusTag = promptData?.status === 'Inactive' ? ' <span class="pa_inactive_tag">Inactive</span>' : '';
         $finding.append(`
-            <div class="pa_passage_label">${escapeHtml(involved.prompt_name)} (${escapeHtml(String(involved.prompt_identifier))})</div>
+            <div class="pa_passage_label">${escapeHtml(involved.prompt_name)} (${escapeHtml(String(involved.prompt_identifier))})${statusTag}</div>
             <div class="pa_passage">${escapeHtml(involved.passage)}</div>
         `);
     }
@@ -695,20 +722,20 @@ async function runCrossPromptAnalysis() {
     const $results = $('#pa_results');
     $results.empty();
 
-    const activePrompts = getActivePrompts();
-    if (activePrompts.length === 0) return;
+    const settings = getSettings();
+    const prompts = settings.includeInactive ? getAllPromptsWithStatus() : getActivePrompts();
+    if (prompts.length === 0) return;
 
-    if (activePrompts.length < 2) {
-        toastr.info('Cross-prompt analysis requires at least 2 active prompts.', 'Preset Analyzer');
+    if (prompts.length < 2) {
+        toastr.info('Cross-prompt analysis requires at least 2 prompts.', 'Preset Analyzer');
         return;
     }
 
-    showProgress(`Analyzing ${activePrompts.length} active prompts...`);
+    showProgress(`Analyzing ${prompts.length} prompts${settings.includeInactive ? ' (including inactive)' : ''}...`);
 
     try {
-        const settings = getSettings();
         const systemPrompt = buildCrossPromptSystemPrompt(settings.customCrossPromptSystemPrompt || undefined);
-        const escapedPrompts = activePrompts.map(p => ({ ...p, content: escapeMacros(p.content) }));
+        const escapedPrompts = prompts.map(p => ({ ...p, content: escapeMacros(p.content) }));
         const prompt = buildCrossPromptUserPrompt(escapedPrompts);
 
         const result = await generateRaw({
@@ -731,12 +758,12 @@ async function runCrossPromptAnalysis() {
         }
 
         // Build lookup map
-        const activePromptsById = {};
-        for (const p of activePrompts) {
-            activePromptsById[p.identifier] = p;
+        const promptsById = {};
+        for (const p of prompts) {
+            promptsById[p.identifier] = p;
         }
 
-        renderCrossPromptResults(analysis, activePromptsById);
+        renderCrossPromptResults(analysis, promptsById);
     } catch (error) {
         console.error(`[${MODULE_NAME}] Cross-prompt analysis error:`, error);
         toastr.error(`Analysis failed: ${error.message}`, 'Preset Analyzer');
@@ -997,6 +1024,13 @@ async function runFollowUp(issue, activePromptsById, $parentFinding) {
     $('#pa_detailed_mode').on('change', function () {
         const s = getSettings();
         s.detailedMode = $(this).prop('checked');
+        saveSettingsDebounced();
+    });
+
+    $('#pa_include_inactive').prop('checked', settings.includeInactive);
+    $('#pa_include_inactive').on('change', function () {
+        const s = getSettings();
+        s.includeInactive = $(this).prop('checked');
         saveSettingsDebounced();
     });
 
