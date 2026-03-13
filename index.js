@@ -421,13 +421,41 @@ function escapeHtml(text) {
 
 function extractMacros(text, counter = { count: 0 }) {
     const macroMap = {};
-    const replaced = text.replace(/\{\{[^}]*\}\}/g, (match) => {
-        counter.count++;
-        const placeholder = `[MACRO_${counter.count}]`;
-        macroMap[placeholder] = match;
-        return placeholder;
-    });
-    return { text: replaced, macroMap };
+    let result = '';
+    let i = 0;
+
+    while (i < text.length) {
+        if (text[i] === '{' && i + 1 < text.length && text[i + 1] === '{') {
+            let depth = 0;
+            let start = i;
+            let j = i;
+
+            while (j < text.length) {
+                if (text[j] === '{' && j + 1 < text.length && text[j + 1] === '{') {
+                    depth++;
+                    j += 2;
+                } else if (text[j] === '}' && j + 1 < text.length && text[j + 1] === '}') {
+                    depth--;
+                    j += 2;
+                    if (depth === 0) break;
+                } else {
+                    j++;
+                }
+            }
+
+            const macroText = text.substring(start, j);
+            const placeholder = `[MACRO_${counter.count}]`;
+            macroMap[placeholder] = macroText;
+            result += placeholder;
+            counter.count++;
+            i = j;
+        } else {
+            result += text[i];
+            i++;
+        }
+    }
+
+    return { text: result, macroMap };
 }
 
 function restoreMacros(text, macroMap) {

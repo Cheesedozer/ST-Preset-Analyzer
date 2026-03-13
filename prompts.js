@@ -97,7 +97,7 @@ Your task:
 // ─── Schema Suffix Builders ─────────────────────────────────────────────────
 
 function appendSchema(promptText, schema) {
-    return `${promptText}\n\n- The text may contain numbered placeholders like [MACRO_1], [MACRO_2], etc. These represent template code that must not be analyzed or modified. Preserve all placeholders exactly as they appear in any suggested rewrites.\n\n- Return ONLY the raw JSON object matching this schema exactly. Do not wrap it in markdown code fences. Do not include any text before or after the JSON.\n\n${JSON.stringify(schema, null, 2)}`;
+    return `${promptText}\n\n- The text contains placeholders like [MACRO_0], [MACRO_1], etc. These represent template code (variables, conditionals, comments, etc.) used by the application. Do not analyze, remove, or modify them. Preserve all placeholders exactly as they appear in any suggested rewrites. They are functional code, not content.\n\n- Return ONLY the raw JSON object matching this schema exactly. Do not wrap it in markdown code fences. Do not include any text before or after the JSON.\n\n${JSON.stringify(schema, null, 2)}`;
 }
 
 // ─── Phase 2: Cross-Prompt Analysis ─────────────────────────────────────────
