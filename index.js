@@ -219,18 +219,25 @@ function parseAnalysisResponse(text) {
 
     // Attempt 1: Direct parse
     try {
+        console.log(`[${MODULE_NAME}] parseAnalysisResponse: Attempt 1 (direct parse), input starts with: ${JSON.stringify(trimmed.substring(0, 120))}`);
         return { result: JSON.parse(trimmed), truncated: false };
-    } catch {
-        // Continue to next attempt
+    } catch (e) {
+        console.log(`[${MODULE_NAME}] parseAnalysisResponse: Direct parse failed: ${e.message}`);
     }
 
-    // Attempt 2: Extract from markdown code fence
-    const fenceMatch = trimmed.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
-    if (fenceMatch) {
+    // Attempt 2: Strip code fences — handle ```json\n...\n```, ```\n...\n```, and partial/trailing fences
+    let stripped = trimmed;
+    // Remove leading ```json or ``` (with optional whitespace/newline after)
+    stripped = stripped.replace(/^```(?:json)?[ \t]*\r?\n?/, '');
+    // Remove trailing ``` (with optional whitespace/newline before)
+    stripped = stripped.replace(/\r?\n?[ \t]*```\s*$/, '');
+    if (stripped !== trimmed) {
         try {
-            return { result: JSON.parse(fenceMatch[1].trim()), truncated: false };
-        } catch {
-            // Continue to next attempt
+            const fenceContent = stripped.trim();
+            console.log(`[${MODULE_NAME}] parseAnalysisResponse: Attempt 2 (fence strip), content starts with: ${JSON.stringify(fenceContent.substring(0, 120))}`);
+            return { result: JSON.parse(fenceContent), truncated: false };
+        } catch (e) {
+            console.log(`[${MODULE_NAME}] parseAnalysisResponse: Fence-stripped parse failed: ${e.message}`);
         }
     }
 
@@ -240,8 +247,10 @@ function parseAnalysisResponse(text) {
     if (firstBrace !== -1 && lastBrace > firstBrace) {
         const extracted = trimmed.slice(firstBrace, lastBrace + 1);
         try {
+            console.log(`[${MODULE_NAME}] parseAnalysisResponse: Attempt 3 (brace extract), content starts with: ${JSON.stringify(extracted.substring(0, 120))}`);
             return { result: JSON.parse(extracted), truncated: false };
-        } catch {
+        } catch (e) {
+            console.log(`[${MODULE_NAME}] parseAnalysisResponse: Brace-extract parse failed: ${e.message}`);
             // Check if it looks like truncated JSON
             if (looksLikeTruncatedJson(extracted)) {
                 return { result: null, truncated: true };
@@ -254,6 +263,7 @@ function parseAnalysisResponse(text) {
         return { result: null, truncated: true };
     }
 
+    console.log(`[${MODULE_NAME}] parseAnalysisResponse: All parse attempts failed. Full raw response:\n${trimmed.substring(0, 500)}`);
     return { result: null, truncated: false };
 }
 
@@ -783,11 +793,9 @@ async function runCrossPromptAnalysis() {
         });
         const prompt = buildCrossPromptUserPrompt(escapedPrompts);
 
-        const result = await generateRaw({
-            systemPrompt,
-            prompt,
-            responseLength: 60000,
-        });
+        const crossPromptParams = { systemPrompt, prompt, responseLength: 60000 };
+        console.log(`[${MODULE_NAME}] generateRaw params (cross-prompt):`, JSON.stringify({ responseLength: crossPromptParams.responseLength, systemPromptLength: systemPrompt.length, promptLength: prompt.length }));
+        const result = await generateRaw(crossPromptParams);
 
         const { result: analysis, truncated } = parseAnalysisResponse(result);
         if (analysis) restoreMacrosInAnalysis(analysis, combinedMacroMap);
@@ -897,11 +905,9 @@ async function runIndividualAnalysis(promptIdentifier) {
                 rewriteUserPrompt += `\n\n--- USER-PROVIDED CONTEXT ---\nThe user has provided the following additional context about this prompt that you should consider during your rewrite:\n${userContext}`;
             }
 
-            const rewriteResult = await generateRaw({
-                systemPrompt: rewriteSystemPrompt,
-                prompt: rewriteUserPrompt,
-                responseLength: 60000,
-            });
+            const rewriteParams = { systemPrompt: rewriteSystemPrompt, prompt: rewriteUserPrompt, responseLength: 60000 };
+            console.log(`[${MODULE_NAME}] generateRaw params (rewrite):`, JSON.stringify({ responseLength: rewriteParams.responseLength, systemPromptLength: rewriteSystemPrompt.length, promptLength: rewriteUserPrompt.length }));
+            const rewriteResult = await generateRaw(rewriteParams);
 
             const { result: rewriteParsed, truncated: rewriteTruncated } = parseAnalysisResponse(rewriteResult);
             if (rewriteParsed) restoreMacrosInAnalysis(rewriteParsed, rewriteMacroMap);
@@ -933,6 +939,8 @@ async function runStandardIssueDetection(generateRaw, prompt, userPrompt, prompt
     try {
         const issuesSystemPrompt = buildIndividualIssuesSystemPrompt(settings.customIndividualSystemPrompt || undefined);
 
+        const stdIssueParams = { systemPrompt: issuesSystemPrompt, prompt: userPrompt, responseLength: 60000 };
+        console.log(`[${MODULE_NAME}] generateRaw params (standard issues):`, JSON.stringify({ responseLength: stdIssueParams.responseLength, systemPromptLength: issuesSystemPrompt.length, promptLength: userPrompt.length }));
         const result = await generateRaw({
             systemPrompt: issuesSystemPrompt,
             prompt: userPrompt,
@@ -970,6 +978,7 @@ async function runDetailedIssueDetection(generateRaw, prompt, userPrompt, prompt
         try {
             const systemPrompt = buildSingleIssueTypeIssuesSystemPrompt(issueTypeDef);
 
+            console.log(`[${MODULE_NAME}] generateRaw params (detailed - ${issueTypeDef.type}):`, JSON.stringify({ responseLength: 60000, systemPromptLength: systemPrompt.length, promptLength: userPrompt.length }));
             const result = await generateRaw({
                 systemPrompt,
                 prompt: userPrompt,
@@ -1027,6 +1036,7 @@ async function runFollowUp(issue, activePromptsById, $parentFinding) {
         }
         const userPrompt = buildFollowUpUserPrompt(issue, escapedPromptsById);
 
+        console.log(`[${MODULE_NAME}] generateRaw params (follow-up):`, JSON.stringify({ responseLength: 60000, systemPromptLength: systemPrompt.length, promptLength: userPrompt.length }));
         const result = await generateRaw({
             systemPrompt,
             prompt: userPrompt,
