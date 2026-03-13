@@ -417,31 +417,42 @@ function escapeHtml(text) {
         .replace(/"/g, '&quot;');
 }
 
-// ─── Macro Escaping ─────────────────────────────────────────────────────────
+// ─── Macro Extraction ────────────────────────────────────────────────────────
 
-function escapeMacros(text) {
-    return text.replace(/\{\{/g, '[[MACRO:').replace(/\}\}/g, ':ENDMACRO]]');
+function extractMacros(text, counter = { count: 0 }) {
+    const macroMap = {};
+    const replaced = text.replace(/\{\{[^}]*\}\}/g, (match) => {
+        counter.count++;
+        const placeholder = `[MACRO_${counter.count}]`;
+        macroMap[placeholder] = match;
+        return placeholder;
+    });
+    return { text: replaced, macroMap };
 }
 
-function unescapeMacros(text) {
-    return text.replace(/\[\[MACRO:/g, '{{').replace(/:ENDMACRO\]\]/g, '}}');
+function restoreMacros(text, macroMap) {
+    let result = text;
+    for (const [placeholder, original] of Object.entries(macroMap)) {
+        result = result.split(placeholder).join(original);
+    }
+    return result;
 }
 
-function unescapeMacrosInAnalysis(obj) {
+function restoreMacrosInAnalysis(obj, macroMap) {
     if (!obj || typeof obj !== 'object') return obj;
     for (const key of Object.keys(obj)) {
         if (typeof obj[key] === 'string') {
-            obj[key] = unescapeMacros(obj[key]);
+            obj[key] = restoreMacros(obj[key], macroMap);
         } else if (Array.isArray(obj[key])) {
             obj[key].forEach((item, i) => {
                 if (typeof item === 'string') {
-                    obj[key][i] = unescapeMacros(item);
+                    obj[key][i] = restoreMacros(item, macroMap);
                 } else if (typeof item === 'object') {
-                    unescapeMacrosInAnalysis(item);
+                    restoreMacrosInAnalysis(item, macroMap);
                 }
             });
         } else if (typeof obj[key] === 'object') {
-            unescapeMacrosInAnalysis(obj[key]);
+            restoreMacrosInAnalysis(obj[key], macroMap);
         }
     }
     return obj;
@@ -735,17 +746,23 @@ async function runCrossPromptAnalysis() {
 
     try {
         const systemPrompt = buildCrossPromptSystemPrompt(settings.customCrossPromptSystemPrompt || undefined);
-        const escapedPrompts = prompts.map(p => ({ ...p, content: escapeMacros(p.content) }));
+        const macroCounter = { count: 0 };
+        const combinedMacroMap = {};
+        const escapedPrompts = prompts.map(p => {
+            const { text, macroMap } = extractMacros(p.content, macroCounter);
+            Object.assign(combinedMacroMap, macroMap);
+            return { ...p, content: text };
+        });
         const prompt = buildCrossPromptUserPrompt(escapedPrompts);
 
         const result = await generateRaw({
             systemPrompt,
             prompt,
-            responseLength: 15000,
+            responseLength: 60000,
         });
 
         const { result: analysis, truncated } = parseAnalysisResponse(result);
-        if (analysis) unescapeMacrosInAnalysis(analysis);
+        if (analysis) restoreMacrosInAnalysis(analysis, combinedMacroMap);
 
         if (!analysis) {
             if (truncated) {
@@ -802,6 +819,7 @@ async function runIndividualAnalysis(promptIdentifier) {
 
     const settings = getSettings();
     const useDetailedMode = settings.detailedMode;
+    const userContext = $('#pa_user_context').val()?.trim();
 
     for (let i = 0; i < promptsToAnalyze.length; i++) {
         const prompt = promptsToAnalyze[i];
@@ -812,19 +830,30 @@ async function runIndividualAnalysis(promptIdentifier) {
             ? detectContextPrompts(prompt, allPrompts)
             : manualContextPrompts;
 
-        const escapedPrompt = { ...prompt, content: escapeMacros(prompt.content) };
-        const escapedContext = contextPrompts ? contextPrompts.map(p => ({ ...p, content: escapeMacros(p.content) })) : [];
-        const userPrompt = buildIndividualIssuesUserPrompt(escapedPrompt, escapedContext);
+        const macroCounter = { count: 0 };
+        const combinedMacroMap = {};
+        const { text: escapedContent, macroMap: targetMap } = extractMacros(prompt.content, macroCounter);
+        Object.assign(combinedMacroMap, targetMap);
+        const escapedPrompt = { ...prompt, content: escapedContent };
+        const escapedContext = contextPrompts ? contextPrompts.map(p => {
+            const { text, macroMap } = extractMacros(p.content, macroCounter);
+            Object.assign(combinedMacroMap, macroMap);
+            return { ...p, content: text };
+        }) : [];
+        let userPrompt = buildIndividualIssuesUserPrompt(escapedPrompt, escapedContext);
+        if (userContext) {
+            userPrompt += `\n\n--- USER-PROVIDED CONTEXT ---\nThe user has provided the following additional context about this prompt that you should consider during your analysis:\n${userContext}`;
+        }
 
         // ── Issue Detection ──
         let analysis;
 
         if (useDetailedMode) {
             // Detailed Mode: separate call per issue type
-            analysis = await runDetailedIssueDetection(generateRaw, prompt, userPrompt, promptLabel, $results);
+            analysis = await runDetailedIssueDetection(generateRaw, prompt, userPrompt, promptLabel, $results, combinedMacroMap);
         } else {
             // Standard Mode: single call for all issue types
-            analysis = await runStandardIssueDetection(generateRaw, prompt, userPrompt, promptLabel, settings, $results);
+            analysis = await runStandardIssueDetection(generateRaw, prompt, userPrompt, promptLabel, settings, $results, combinedMacroMap);
         }
 
         if (!analysis) continue;
@@ -834,16 +863,20 @@ async function runIndividualAnalysis(promptIdentifier) {
 
         try {
             const rewriteSystemPrompt = buildIndividualRewriteSystemPrompt();
-            const rewriteUserPrompt = buildIndividualRewriteUserPrompt({ ...prompt, content: escapeMacros(prompt.content) }, analysis.issues || []);
+            const { text: rewriteEscaped, macroMap: rewriteMacroMap } = extractMacros(prompt.content);
+            let rewriteUserPrompt = buildIndividualRewriteUserPrompt({ ...prompt, content: rewriteEscaped }, analysis.issues || []);
+            if (userContext) {
+                rewriteUserPrompt += `\n\n--- USER-PROVIDED CONTEXT ---\nThe user has provided the following additional context about this prompt that you should consider during your rewrite:\n${userContext}`;
+            }
 
             const rewriteResult = await generateRaw({
                 systemPrompt: rewriteSystemPrompt,
                 prompt: rewriteUserPrompt,
-                responseLength: 15000,
+                responseLength: 60000,
             });
 
             const { result: rewriteParsed, truncated: rewriteTruncated } = parseAnalysisResponse(rewriteResult);
-            if (rewriteParsed) unescapeMacrosInAnalysis(rewriteParsed);
+            if (rewriteParsed) restoreMacrosInAnalysis(rewriteParsed, rewriteMacroMap);
 
             if (rewriteParsed && rewriteParsed.suggested_full_rewrite) {
                 analysis.suggested_full_rewrite = rewriteParsed.suggested_full_rewrite;
@@ -866,7 +899,7 @@ async function runIndividualAnalysis(promptIdentifier) {
     hideProgress();
 }
 
-async function runStandardIssueDetection(generateRaw, prompt, userPrompt, promptLabel, settings, $results) {
+async function runStandardIssueDetection(generateRaw, prompt, userPrompt, promptLabel, settings, $results, macroMap) {
     showProgress(`Identifying issues in prompt ${promptLabel}...`);
 
     try {
@@ -875,11 +908,11 @@ async function runStandardIssueDetection(generateRaw, prompt, userPrompt, prompt
         const result = await generateRaw({
             systemPrompt: issuesSystemPrompt,
             prompt: userPrompt,
-            responseLength: 15000,
+            responseLength: 60000,
         });
 
         const { result: parsed, truncated } = parseAnalysisResponse(result);
-        if (parsed) unescapeMacrosInAnalysis(parsed);
+        if (parsed) restoreMacrosInAnalysis(parsed, macroMap);
 
         if (!parsed) {
             const msg = truncated ? TRUNCATION_WARNING : `Failed to parse issue detection response for "${escapeHtml(prompt.name)}".`;
@@ -898,7 +931,7 @@ async function runStandardIssueDetection(generateRaw, prompt, userPrompt, prompt
     }
 }
 
-async function runDetailedIssueDetection(generateRaw, prompt, userPrompt, promptLabel, $results) {
+async function runDetailedIssueDetection(generateRaw, prompt, userPrompt, promptLabel, $results, macroMap) {
     const mergedIssues = [];
     let originalTokenCount = null;
 
@@ -912,11 +945,11 @@ async function runDetailedIssueDetection(generateRaw, prompt, userPrompt, prompt
             const result = await generateRaw({
                 systemPrompt,
                 prompt: userPrompt,
-                responseLength: 15000,
+                responseLength: 60000,
             });
 
             const { result: parsed, truncated } = parseAnalysisResponse(result);
-            if (parsed) unescapeMacrosInAnalysis(parsed);
+            if (parsed) restoreMacrosInAnalysis(parsed, macroMap);
 
             if (!parsed) {
                 if (truncated) {
@@ -956,20 +989,24 @@ async function runFollowUp(issue, activePromptsById, $parentFinding) {
     try {
         const settings = getSettings();
         const systemPrompt = buildFollowUpSystemPrompt(settings.customFollowUpSystemPrompt || undefined);
+        const macroCounter = { count: 0 };
+        const combinedMacroMap = {};
         const escapedPromptsById = {};
         for (const [id, p] of Object.entries(activePromptsById)) {
-            escapedPromptsById[id] = { ...p, content: escapeMacros(p.content) };
+            const { text, macroMap } = extractMacros(p.content, macroCounter);
+            Object.assign(combinedMacroMap, macroMap);
+            escapedPromptsById[id] = { ...p, content: text };
         }
         const userPrompt = buildFollowUpUserPrompt(issue, escapedPromptsById);
 
         const result = await generateRaw({
             systemPrompt,
             prompt: userPrompt,
-            responseLength: 15000,
+            responseLength: 60000,
         });
 
         const { result: followup, truncated } = parseAnalysisResponse(result);
-        if (followup) unescapeMacrosInAnalysis(followup);
+        if (followup) restoreMacrosInAnalysis(followup, combinedMacroMap);
         if (truncated) {
             $parentFinding.append(`<div class="pa_error">${escapeHtml(TRUNCATION_WARNING)}</div>`);
         }
@@ -1089,6 +1126,7 @@ async function runFollowUp(issue, activePromptsById, $parentFinding) {
     populatePromptDropdown();
     $('#pa_prompt_select').on('change', function () {
         populateContextChecklist($(this).val());
+        $('#pa_user_context').val('');
     });
 
     // Auto-detect related context prompts
