@@ -568,6 +568,83 @@ function restoreMacrosInAnalysis(obj, macroMap) {
     return obj;
 }
 
+const KNOWN_BUILTIN_MACROS = [
+    'user', 'char', 'persona', 'time', 'date', 'idle_duration',
+    'lastMessage', 'lastMessageId', 'mesExamples', 'model',
+    'group', 'weekday', 'isotime', 'isodate', 'description',
+    'personality', 'scenario', 'first_mes', 'mes_example',
+    'char_version', 'random', 'roll', 'bias', 'pick',
+    'time_UTC', 'timeDiff', 'input',
+];
+
+function classifyMacro(macroText) {
+    const inner = macroText.slice(2, -2).trim();
+
+    if (inner.startsWith('//')) {
+        return { type: 'comment', analyzable: false, description: 'Comment', content: inner.slice(2).trim() };
+    }
+
+    if (inner.startsWith('setvar::')) {
+        const parts = inner.split('::');
+        const key = parts[1] || '';
+        const content = parts.slice(2).join('::');
+        return { type: 'setvar', analyzable: true, key, content, description: `variable setter (setvar::${key})` };
+    }
+
+    if (inner.startsWith('setglobalvar::')) {
+        const parts = inner.split('::');
+        const key = parts[1] || '';
+        const content = parts.slice(2).join('::');
+        return { type: 'setglobalvar', analyzable: true, key, content, description: `global variable setter (setglobalvar::${key})` };
+    }
+
+    if (inner.startsWith('getvar::')) {
+        return { type: 'getvar', analyzable: false, description: `variable getter (getvar::${inner.slice(8)})` };
+    }
+
+    if (inner.startsWith('getglobalvar::')) {
+        return { type: 'getglobalvar', analyzable: false, description: `global variable getter (getglobalvar::${inner.slice(14)})` };
+    }
+
+    if (inner.startsWith('if ') || inner.startsWith('if::')) {
+        return { type: 'conditional', analyzable: true, content: inner, description: 'conditional block' };
+    }
+
+    if (inner === '/if' || inner === 'else') {
+        return { type: 'conditional_control', analyzable: false, description: `conditional ${inner}` };
+    }
+
+    if (KNOWN_BUILTIN_MACROS.includes(inner)) {
+        return { type: 'builtin', analyzable: false, description: `template variable (${inner})` };
+    }
+
+    return { type: 'unknown', analyzable: true, content: inner, description: 'unknown macro' };
+}
+
+function buildMacroReference(macroMap) {
+    if (!macroMap || Object.keys(macroMap).length === 0) return '';
+
+    const lines = ['\n\n--- MACRO REFERENCE ---'];
+
+    for (const [placeholder, macroText] of Object.entries(macroMap)) {
+        const info = classifyMacro(macroText);
+        if (info.analyzable) {
+            lines.push(`${placeholder} type: ${info.description}`);
+            lines.push(`  Contents: "${info.content}"`);
+            lines.push('  → Analyze contents for prompt quality issues. Preserve macro wrapper in rewrites.');
+        } else if (info.type === 'comment') {
+            lines.push(`${placeholder} type: comment`);
+            lines.push(`  Contents: "${info.content}"`);
+            lines.push('  → Comment only, no analysis needed.');
+        } else {
+            lines.push(`${placeholder} type: ${info.description}`);
+            lines.push('  → Template variable, do not analyze.');
+        }
+    }
+
+    return lines.join('\n');
+}
+
 // ─── Cross-Prompt Results Rendering ──────────────────────────────────────────
 
 function renderCrossPromptResults(analysis, activePromptsById) {
@@ -863,7 +940,7 @@ async function runCrossPromptAnalysis() {
             Object.assign(combinedMacroMap, macroMap);
             return { ...p, content: text };
         });
-        const prompt = buildCrossPromptUserPrompt(escapedPrompts);
+        const prompt = buildCrossPromptUserPrompt(escapedPrompts) + buildMacroReference(combinedMacroMap);
 
         const crossPromptParams = { systemPrompt, prompt, responseLength: 60000 };
         console.log(`[${MODULE_NAME}] generateRaw params (cross-prompt):`, JSON.stringify({ responseLength: crossPromptParams.responseLength, systemPromptLength: systemPrompt.length, promptLength: prompt.length }));
@@ -949,6 +1026,7 @@ async function runIndividualAnalysis(promptIdentifier) {
             return { ...p, content: text };
         }) : [];
         let userPrompt = buildIndividualIssuesUserPrompt(escapedPrompt, escapedContext);
+        userPrompt += buildMacroReference(combinedMacroMap);
         if (userContext) {
             userPrompt += `\n\n--- USER-PROVIDED CONTEXT ---\nThe user has provided the following additional context about this prompt that you should consider during your analysis:\n${userContext}`;
         }
@@ -973,6 +1051,7 @@ async function runIndividualAnalysis(promptIdentifier) {
             const rewriteSystemPrompt = buildIndividualRewriteSystemPrompt();
             const { text: rewriteEscaped, macroMap: rewriteMacroMap } = extractMacros(prompt.content);
             let rewriteUserPrompt = buildIndividualRewriteUserPrompt({ ...prompt, content: rewriteEscaped }, analysis.issues || []);
+            rewriteUserPrompt += buildMacroReference(rewriteMacroMap);
             if (userContext) {
                 rewriteUserPrompt += `\n\n--- USER-PROVIDED CONTEXT ---\nThe user has provided the following additional context about this prompt that you should consider during your rewrite:\n${userContext}`;
             }
@@ -1106,7 +1185,7 @@ async function runFollowUp(issue, activePromptsById, $parentFinding) {
             Object.assign(combinedMacroMap, macroMap);
             escapedPromptsById[id] = { ...p, content: text };
         }
-        const userPrompt = buildFollowUpUserPrompt(issue, escapedPromptsById);
+        const userPrompt = buildFollowUpUserPrompt(issue, escapedPromptsById) + buildMacroReference(combinedMacroMap);
 
         console.log(`[${MODULE_NAME}] generateRaw params (follow-up):`, JSON.stringify({ responseLength: 60000, systemPromptLength: systemPrompt.length, promptLength: userPrompt.length }));
         const result = await generateRaw({
