@@ -212,6 +212,64 @@ function looksLikeTruncatedJson(text) {
  * @param {string} text
  * @returns {{result: object|null, truncated: boolean}}
  */
+
+/**
+ * Attempt to repair JSON with unescaped double quotes inside string values.
+ * Walks character-by-character tracking whether we're inside a JSON string.
+ * When inside a string, if a `"` is encountered that doesn't look like the
+ * closing quote (next non-whitespace is not `:`, `,`, `}`, `]`), escape it.
+ */
+function repairJsonQuotes(text) {
+    let result = '';
+    let i = 0;
+    let inString = false;
+
+    while (i < text.length) {
+        const ch = text[i];
+
+        if (!inString) {
+            result += ch;
+            if (ch === '"') {
+                inString = true;
+            }
+            i++;
+        } else {
+            // Inside a JSON string value
+            if (ch === '\\') {
+                // Escaped character — copy both the backslash and next char
+                result += ch;
+                i++;
+                if (i < text.length) {
+                    result += text[i];
+                    i++;
+                }
+            } else if (ch === '"') {
+                // Is this the real closing quote or an unescaped interior quote?
+                // Peek ahead at the next non-whitespace character
+                let peek = i + 1;
+                while (peek < text.length && (text[peek] === ' ' || text[peek] === '\t' || text[peek] === '\r' || text[peek] === '\n')) {
+                    peek++;
+                }
+                const nextChar = peek < text.length ? text[peek] : '';
+                if (nextChar === ':' || nextChar === ',' || nextChar === '}' || nextChar === ']' || nextChar === '') {
+                    // Legitimate closing quote
+                    result += ch;
+                    inString = false;
+                } else {
+                    // Unescaped interior quote — escape it
+                    result += '\\"';
+                }
+                i++;
+            } else {
+                result += ch;
+                i++;
+            }
+        }
+    }
+
+    return result;
+}
+
 function parseAnalysisResponse(text) {
     if (!text || typeof text !== 'string') return { result: null, truncated: false };
 
@@ -251,6 +309,20 @@ function parseAnalysisResponse(text) {
             return { result: JSON.parse(extracted), truncated: false };
         } catch (e) {
             console.log(`[${MODULE_NAME}] parseAnalysisResponse: Brace-extract parse failed: ${e.message}`);
+
+            // Attempt 4: Repair unescaped quotes inside JSON string values
+            try {
+                const repaired = repairJsonQuotes(extracted);
+                if (repaired !== extracted) {
+                    console.log(`[${MODULE_NAME}] parseAnalysisResponse: Attempt 4 (quote repair), repaired ${extracted.length} chars`);
+                    const parsed = JSON.parse(repaired);
+                    console.log(`[${MODULE_NAME}] parseAnalysisResponse: Quote repair succeeded`);
+                    return { result: parsed, truncated: false };
+                }
+            } catch (repairError) {
+                console.log(`[${MODULE_NAME}] parseAnalysisResponse: Quote repair parse failed: ${repairError.message}`);
+            }
+
             // Check if it looks like truncated JSON
             if (looksLikeTruncatedJson(extracted)) {
                 return { result: null, truncated: true };
