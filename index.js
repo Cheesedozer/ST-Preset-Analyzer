@@ -793,7 +793,7 @@ function renderIndividualResults(analysis, contextNames) {
     }
 
     if (!analysis.issues || analysis.issues.length === 0) {
-        $body.append('<div class="pa_no_issues">No issues found in this prompt.</div>');
+        $body.append('<div class="pa_no_issues">No issues found. This prompt is concise and well-structured.</div>');
     } else {
         // Group issues by type
         const grouped = {};
@@ -872,6 +872,14 @@ function renderIndividualResults(analysis, contextNames) {
 
         if (tokenInfo.length > 0) {
             $body.append(`<div class="pa_token_summary">${tokenInfo.join(' &rarr; ')}</div>`);
+        }
+
+        // Near-optimal note when savings are minimal
+        if (analysis.original_token_count && rewrite.estimated_tokens_saved != null) {
+            const savingsPercent = rewrite.estimated_tokens_saved / analysis.original_token_count;
+            if (savingsPercent < 0.05) {
+                $body.append('<div class="pa_near_optimal">The suggested changes are minor. The original prompt is already close to optimal.</div>');
+            }
         }
 
         // Assumptions
@@ -1044,6 +1052,14 @@ async function runIndividualAnalysis(promptIdentifier) {
 
         if (!analysis) continue;
 
+        // Skip rewrite when no issues found — nothing to rewrite
+        if (!analysis.issues || analysis.issues.length === 0) {
+            const contextNames = contextPrompts.map(p => p.name);
+            const $promptResult = renderIndividualResults(analysis, contextNames);
+            $results.append($promptResult);
+            continue;
+        }
+
         // ── Call 2: Full Rewrite ──
         showProgress(`Generating full rewrite for prompt ${promptLabel}...`);
 
@@ -1052,6 +1068,11 @@ async function runIndividualAnalysis(promptIdentifier) {
             const { text: rewriteEscaped, macroMap: rewriteMacroMap } = extractMacros(prompt.content);
             let rewriteUserPrompt = buildIndividualRewriteUserPrompt({ ...prompt, content: rewriteEscaped }, analysis.issues || []);
             rewriteUserPrompt += buildMacroReference(rewriteMacroMap);
+
+            const issueCount = (analysis.issues || []).length;
+            const rewriteCount = (analysis.issues || []).filter(i => i.suggested_rewrite).length;
+            console.log(`[${MODULE_NAME}] Call 2 (rewrite) for "${prompt.name}": ${issueCount} issues, ${rewriteCount} with per-issue rewrites`);
+
             if (userContext) {
                 rewriteUserPrompt += `\n\n--- USER-PROVIDED CONTEXT ---\nThe user has provided the following additional context about this prompt that you should consider during your rewrite:\n${userContext}`;
             }
