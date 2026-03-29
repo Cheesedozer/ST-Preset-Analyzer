@@ -19,6 +19,7 @@ import {
     DEFAULT_CROSS_PROMPT,
     DEFAULT_INDIVIDUAL_PROMPT,
     DEFAULT_FOLLOWUP_PROMPT,
+    DEFAULT_COT_ISSUES_PROMPT,
 } from './prompts.js';
 import { computeWordDiff, renderDiffHtml } from './diff.js';
 
@@ -29,6 +30,7 @@ const defaultSettings = Object.freeze({
     crossPromptEnabled: true,
     individualEnabled: true,
     detailedMode: false,
+    cotAnalysisEnabled: false,
     includeInactive: false,
     customCrossPromptSystemPrompt: '',
     customIndividualSystemPrompt: '',
@@ -458,6 +460,29 @@ const INDIVIDUAL_ISSUE_TYPES = [
         description: 'Poor grouping or ordering of instructions within the prompt, making it harder for the model to parse.' },
 ];
 
+// ─── CoT-Specific Issue Type Definitions (for Detailed Mode) ────────────────
+
+const COT_ISSUE_TYPES = [
+    { type: 'counterproductive_priming', label: 'Counterproductive Priming', severity: 'high',
+        description: 'A thinking step in a Chain of Thought prompt that activates the very patterns it is trying to prevent. For example, asking the model to "list all rules you might violate" primes violation patterns in the model\'s attention immediately before generation. Also includes steps that ask the model to enumerate bad examples, anti-patterns, or failure modes without a clear corrective framing, which increases the likelihood of those behaviors appearing in output.' },
+    { type: 'low_value_thinking_step', label: 'Low-Value Thinking Step', severity: 'medium',
+        description: 'A thinking step in a Chain of Thought prompt that consumes the model\'s thinking token budget without meaningfully improving output quality. In CoT prompts, every token spent thinking is a token NOT available for the actual creative output. Flag steps that are ceremonial, redundant with what the model would naturally do, or that produce busywork rather than genuine reasoning. Consider whether the step\'s output actually influences the final generation.' },
+    { type: 'missing_critical_step', label: 'Missing Critical Step', severity: 'medium',
+        description: 'An important reasoning stage that the Chain of Thought prompt should include but does not. Common missing steps include: output language confirmation (especially when thinking and output languages differ), character voice/tone calibration before writing, continuity checks against recent context, pacing decisions for how much plot to advance, and explicit transition from thinking to output. Flag only steps whose absence would likely cause concrete generation failures, not hypothetical nice-to-haves.' },
+    { type: 'granularity_mismatch', label: 'Granularity Mismatch', severity: 'medium',
+        description: 'Thinking steps in a Chain of Thought prompt that are calibrated too broadly or too narrowly for productive reasoning. Steps that are too broad (e.g., "think about the story") let the model wander without structure. Steps that are too numerous or too narrow cause the model to rush through each one superficially, producing shallow bullet points rather than genuine reasoning. Also flag missing depth/word budgets for steps that need them, or budgets that are unrealistically tight or generous for what the step asks.' },
+    { type: 'model_incompatible_structure', label: 'Model-Incompatible Structure', severity: 'high',
+        description: 'Structural choices in the Chain of Thought prompt that may conflict with the target model\'s capabilities or native features. This includes: tag formats that clash with the model\'s built-in extended thinking (e.g., using <think> tags on models with native chain-of-thought), language directives the model handles poorly (e.g., thinking in a language the model is weak in), prefill patterns unsupported by the target API, reliance on features specific to one model family, and CoT ordering or placement that fights the model\'s natural processing flow.' },
+];
+
+function getActiveIssueTypes() {
+    const settings = getSettings();
+    if (settings.cotAnalysisEnabled) {
+        return [...INDIVIDUAL_ISSUE_TYPES, ...COT_ISSUE_TYPES];
+    }
+    return INDIVIDUAL_ISSUE_TYPES;
+}
+
 // ─── Rendering Helpers ───────────────────────────────────────────────────────
 
 const ISSUE_TYPE_LABELS = {
@@ -469,6 +494,11 @@ const ISSUE_TYPE_LABELS = {
     vague_unactionable: 'Vague / Unactionable Instructions',
     dead_weight: 'Dead Weight',
     structural_disorganization: 'Structural Disorganization',
+    counterproductive_priming: 'Counterproductive Priming',
+    low_value_thinking_step: 'Low-Value Thinking Steps',
+    missing_critical_step: 'Missing Critical Steps',
+    granularity_mismatch: 'Granularity Mismatch',
+    model_incompatible_structure: 'Model-Incompatible Structure',
 };
 
 const ISSUE_TYPE_ORDER = [
@@ -480,6 +510,11 @@ const ISSUE_TYPE_ORDER = [
     'vague_unactionable',
     'dead_weight',
     'structural_disorganization',
+    'counterproductive_priming',
+    'low_value_thinking_step',
+    'missing_critical_step',
+    'granularity_mismatch',
+    'model_incompatible_structure',
 ];
 
 function severityClass(severity) {
@@ -1109,7 +1144,11 @@ async function runStandardIssueDetection(generateRaw, prompt, userPrompt, prompt
     showProgress(`Identifying issues in prompt ${promptLabel}...`);
 
     try {
-        const issuesSystemPrompt = buildIndividualIssuesSystemPrompt(settings.customIndividualSystemPrompt || undefined);
+        let customPrompt = settings.customIndividualSystemPrompt || undefined;
+        if (!customPrompt && settings.cotAnalysisEnabled) {
+            customPrompt = DEFAULT_COT_ISSUES_PROMPT;
+        }
+        const issuesSystemPrompt = buildIndividualIssuesSystemPrompt(customPrompt);
 
         const stdIssueParams = { systemPrompt: issuesSystemPrompt, prompt: userPrompt, responseLength: 60000 };
         console.log(`[${MODULE_NAME}] generateRaw params (standard issues):`, JSON.stringify({ responseLength: stdIssueParams.responseLength, systemPromptLength: issuesSystemPrompt.length, promptLength: userPrompt.length }));
@@ -1143,9 +1182,10 @@ async function runDetailedIssueDetection(generateRaw, prompt, userPrompt, prompt
     const mergedIssues = [];
     let originalTokenCount = null;
 
-    for (let j = 0; j < INDIVIDUAL_ISSUE_TYPES.length; j++) {
-        const issueTypeDef = INDIVIDUAL_ISSUE_TYPES[j];
-        showProgress(`Analyzing: ${issueTypeDef.label} (${j + 1}/${INDIVIDUAL_ISSUE_TYPES.length}) — prompt ${promptLabel}...`);
+    const activeIssueTypes = getActiveIssueTypes();
+    for (let j = 0; j < activeIssueTypes.length; j++) {
+        const issueTypeDef = activeIssueTypes[j];
+        showProgress(`Analyzing: ${issueTypeDef.label} (${j + 1}/${activeIssueTypes.length}) — prompt ${promptLabel}...`);
 
         try {
             const systemPrompt = buildSingleIssueTypeIssuesSystemPrompt(issueTypeDef);
@@ -1271,6 +1311,13 @@ async function runFollowUp(issue, activePromptsById, $parentFinding) {
     $('#pa_detailed_mode').on('change', function () {
         const s = getSettings();
         s.detailedMode = $(this).prop('checked');
+        saveSettingsDebounced();
+    });
+
+    $('#pa_cot_analysis').prop('checked', settings.cotAnalysisEnabled);
+    $('#pa_cot_analysis').on('change', function () {
+        const s = getSettings();
+        s.cotAnalysisEnabled = $(this).prop('checked');
         saveSettingsDebounced();
     });
 

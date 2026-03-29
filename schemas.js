@@ -88,7 +88,7 @@ export const INDIVIDUAL_PROMPT_SCHEMA = {
                     'properties': {
                         'type': {
                             'type': 'string',
-                            'enum': ['internal_verbosity', 'vague_unactionable', 'internal_self_contradiction', 'dead_weight', 'structural_disorganization'],
+                            'enum': ['internal_verbosity', 'vague_unactionable', 'internal_self_contradiction', 'dead_weight', 'structural_disorganization', 'counterproductive_priming', 'low_value_thinking_step', 'missing_critical_step', 'granularity_mismatch', 'model_incompatible_structure'],
                         },
                         'severity': {
                             'type': 'string',
@@ -141,7 +141,7 @@ export const INDIVIDUAL_ISSUES_SCHEMA = {
                     'properties': {
                         'type': {
                             'type': 'string',
-                            'enum': ['internal_verbosity', 'vague_unactionable', 'internal_self_contradiction', 'dead_weight', 'structural_disorganization'],
+                            'enum': ['internal_verbosity', 'vague_unactionable', 'internal_self_contradiction', 'dead_weight', 'structural_disorganization', 'counterproductive_priming', 'low_value_thinking_step', 'missing_critical_step', 'granularity_mismatch', 'model_incompatible_structure'],
                         },
                         'severity': {
                             'type': 'string',
