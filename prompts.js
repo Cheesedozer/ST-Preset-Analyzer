@@ -3,7 +3,7 @@
  * Each function returns a string to be used as system or user prompt in generateRaw().
  */
 
-import { CROSS_PROMPT_SCHEMA, INDIVIDUAL_PROMPT_SCHEMA, INDIVIDUAL_ISSUES_SCHEMA, INDIVIDUAL_REWRITE_SCHEMA, FOLLOWUP_SCHEMA } from './schemas.js';
+import { CROSS_PROMPT_SCHEMA, INDIVIDUAL_PROMPT_SCHEMA, INDIVIDUAL_ISSUES_SCHEMA, INDIVIDUAL_REWRITE_SCHEMA, FOLLOWUP_SCHEMA, INTENT_EXTRACTION_SCHEMA, GROUND_UP_REWRITE_SCHEMA } from './schemas.js';
 
 // ─── Default System Prompts (exported for settings UI) ──────────────────────
 
@@ -250,6 +250,119 @@ export function buildFollowUpUserPrompt(issue, promptsById) {
         const fullText = fullPrompt ? fullPrompt.content : involved.passage;
         text += `\n[Prompt - Name: "${involved.prompt_name}" | Identifier: ${involved.prompt_identifier}]\n${fullText}\n`;
     }
+
+    return text;
+}
+
+// ─── Reimagine: Intent Extraction & Ground-Up Rewrite ──────────────────────
+
+export const DEFAULT_INTENT_EXTRACTION_PROMPT = `You are an expert prompt engineer. Your task is to extract the complete behavioral intent of a SillyTavern prompt — not to judge or improve it, but to faithfully capture what it is trying to accomplish.
+
+Extract the following dimensions:
+
+1. **Purpose** — The core goal of this prompt in one or two sentences. What would break if it were removed entirely?
+
+2. **Behavioral Directives** — Every distinct instruction the prompt gives the model. Be exhaustive and granular. "Write in third person" and "use past tense" are separate directives, not one.
+
+3. **Guardrails** — Constraints, prohibitions, and boundaries the prompt enforces. Include both explicit prohibitions and implicit constraints.
+
+4. **Tone & Style** — Voice, register, and stylistic qualities the prompt establishes.
+
+5. **Edge Cases** — Special-case handling, conditional logic, or situational instructions. These are often instructions added later as the user encountered problems.
+
+6. **Implicit Assumptions** — Things the prompt assumes but does not state explicitly (e.g., assumed context, expected model capabilities, assumed user preferences).
+
+7. **Macro Usage Notes** — How SillyTavern template macros (e.g., {{char}}, {{user}}) are used in the prompt and what role they play.
+
+Rules:
+- Be exhaustive. The intent extraction will be used to write a replacement prompt from scratch — anything you miss here will be lost.
+- Preserve the MEANING, not the wording. You are extracting intent, not quoting.
+- If a directive is ambiguous, note the ambiguity rather than guessing.
+- When in doubt, include it.`;
+
+export const DEFAULT_GROUND_UP_REWRITE_PROMPT = `You are an expert prompt engineer. You are given the extracted behavioral intent of a SillyTavern prompt. Your task is to write the OPTIMAL prompt from scratch that achieves all of the specified intent.
+
+You are NOT editing or patching an existing prompt. You are writing a new one from a blank page, informed only by the intent description. This means you should:
+
+1. **Design the optimal structure first.** Decide the best way to organize the instructions — what comes first, how to group related directives, whether to use sections/headers or flowing prose. The original prompt's structure is irrelevant.
+
+2. **Use efficient, precise language.** Every token should earn its place. Prefer concrete instructions over abstract ones. Prefer "Do X" over "You should try to X when possible." Avoid hedging language, meta-commentary about being a prompt, and filler phrases.
+
+3. **Consolidate related directives.** If multiple behavioral directives are facets of the same concern, express them as a unified instruction rather than separate scattered lines.
+
+4. **Preserve ALL behavioral intent.** Every directive, guardrail, edge case, and stylistic instruction from the intent extraction must be present in your rewrite. You may express them differently — more concisely, better organized — but you must not drop any.
+
+5. **Preserve all macros exactly.** SillyTavern macros ({{char}}, {{user}}, etc.) and any [MACRO_N] placeholders must appear in the rewrite exactly as specified.
+
+6. **Document your choices.** In design_notes, explain your structural choices. In assumptions, note any ambiguities you resolved.
+
+7. **Aim for meaningful token reduction.** A well-designed prompt should achieve the same behavioral coverage in fewer tokens. If your rewrite is longer than the original, reconsider whether you are being truly concise or just reorganizing verbosity.
+
+The user may have edited the intent before sending it to you. Always follow the intent as provided, even if it differs from what the original prompt contained.`;
+
+export function buildIntentExtractionSystemPrompt(customPrompt) {
+    const base = customPrompt || DEFAULT_INTENT_EXTRACTION_PROMPT;
+    return appendSchema(base, INTENT_EXTRACTION_SCHEMA.value);
+}
+
+export function buildIntentExtractionUserPrompt(prompt, contextPrompts) {
+    let text = `Extract the complete behavioral intent of the following prompt.
+Return your extraction as valid JSON matching the schema described in your instructions.
+
+Prompt Name: "${prompt.name}"
+Prompt Identifier: ${prompt.identifier}
+
+--- PROMPT TEXT ---
+${prompt.content}`;
+
+    if (contextPrompts && contextPrompts.length > 0) {
+        text += `\n\n--- CONTEXT PROMPTS (for reference only — do NOT extract their intent) ---\nThe following additional prompts are part of the same preset. Use them to understand how the target prompt fits within the broader configuration.\n`;
+
+        for (const ctx of contextPrompts) {
+            text += `\n[Context Prompt - Name: "${ctx.name}" | Identifier: ${ctx.identifier}]\n${ctx.content}\n`;
+        }
+    }
+
+    return text;
+}
+
+export function buildGroundUpRewriteSystemPrompt(customPrompt) {
+    const base = customPrompt || DEFAULT_GROUND_UP_REWRITE_PROMPT;
+    return appendSchema(base, GROUND_UP_REWRITE_SCHEMA.value);
+}
+
+export function buildGroundUpRewriteUserPrompt(prompt, editedIntent) {
+    let text = `Write an entirely new prompt from scratch based on the following extracted behavioral intent.
+Return your response as valid JSON matching the schema described in your instructions.
+
+Original Prompt Name: "${prompt.name}"
+Original Prompt Identifier: ${prompt.identifier}
+
+--- EXTRACTED BEHAVIORAL INTENT ---
+
+Purpose:
+${editedIntent.purpose}
+
+Behavioral Directives:
+${(editedIntent.behavioral_directives || []).map((d, i) => `${i + 1}. ${d}`).join('\n')}
+
+Guardrails:
+${(editedIntent.guardrails || []).map((g, i) => `${i + 1}. ${g}`).join('\n')}
+
+Tone & Style:
+${editedIntent.tone_and_style}
+
+Edge Cases:
+${(editedIntent.edge_cases || []).map((e, i) => `${i + 1}. ${e}`).join('\n')}
+
+Implicit Assumptions:
+${(editedIntent.implicit_assumptions || []).map((a, i) => `${i + 1}. ${a}`).join('\n')}
+
+Macro Usage:
+${editedIntent.macro_usage_notes}
+
+--- ORIGINAL PROMPT TEXT (for macro reference only) ---
+${prompt.content}`;
 
     return text;
 }
