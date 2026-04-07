@@ -480,3 +480,107 @@
     background: rgba(0, 123, 255, 0.05);
     border-radius: 0 4px 4px 0;
 }
+
+/* ─── Reimagine: Intent Review ───────────────────────────────────────────── */
+
+.pa_intent_review {
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 4px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: var(--SmartThemeBlurTintColor);
+}
+
+.pa_intent_review_title {
+    font-weight: bold;
+    font-size: 0.95em;
+    border-bottom: 1px solid var(--SmartThemeBorderColor);
+    padding-bottom: 4px;
+}
+
+.pa_intent_field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.pa_intent_field label {
+    font-weight: bold;
+    font-size: 0.85em;
+    opacity: 0.9;
+}
+
+.pa_intent_field textarea {
+    font-family: monospace;
+    font-size: 0.85em;
+    resize: vertical;
+    min-height: 60px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.pa_intent_field_hint {
+    font-size: 0.75em;
+    opacity: 0.5;
+    font-style: italic;
+}
+
+.pa_intent_actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 4px;
+}
+
+.pa_intent_actions .menu_button {
+    font-size: 0.85em;
+}
+
+/* ─── Reimagine: Results ─────────────────────────────────────────────────── */
+
+.pa_reimagine_result {
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 4px;
+    margin-bottom: 8px;
+}
+
+.pa_reimagine_result_header {
+    padding: 8px 12px;
+    font-weight: bold;
+    background: var(--SmartThemeBlurTintColor);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.pa_reimagine_result_body {
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.pa_design_notes {
+    padding: 8px;
+    border: 1px solid rgba(0, 123, 255, 0.3);
+    border-radius: 4px;
+    background: rgba(0, 123, 255, 0.05);
+    font-size: 0.85em;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.pa_design_notes_title {
+    font-weight: bold;
+    margin-bottom: 4px;
+    color: #6ea8fe;
+}
+
+.pa_apply_rewrite_btn {
+    font-size: 0.8em;
+    padding: 2px 8px;
+    margin: 0;
+    white-space: nowrap;
+}

@@ -16,6 +16,10 @@ import {
     buildIndividualRewriteUserPrompt,
     buildFollowUpSystemPrompt,
     buildFollowUpUserPrompt,
+    buildIntentExtractionSystemPrompt,
+    buildIntentExtractionUserPrompt,
+    buildGroundUpRewriteSystemPrompt,
+    buildGroundUpRewriteUserPrompt,
     DEFAULT_CROSS_PROMPT,
     DEFAULT_INDIVIDUAL_PROMPT,
     DEFAULT_FOLLOWUP_PROMPT,
@@ -956,6 +960,193 @@ function renderIndividualResults(analysis, contextNames) {
     return $container;
 }
 
+// ─── Reimagine: Intent Review UI ────────────────────────────────────────────
+
+function showIntentReviewUI(intent) {
+    return new Promise((resolve, reject) => {
+        const $results = $('#pa_results');
+
+        const fields = [
+            { key: 'purpose', label: 'Purpose', type: 'text', hint: 'The core goal of this prompt.' },
+            { key: 'behavioral_directives', label: 'Behavioral Directives', type: 'array', hint: 'One directive per line.' },
+            { key: 'guardrails', label: 'Guardrails', type: 'array', hint: 'One constraint per line.' },
+            { key: 'tone_and_style', label: 'Tone & Style', type: 'text', hint: 'Voice, register, and stylistic directives.' },
+            { key: 'edge_cases', label: 'Edge Cases', type: 'array', hint: 'One edge case per line.' },
+            { key: 'implicit_assumptions', label: 'Implicit Assumptions', type: 'array', hint: 'One assumption per line.' },
+            { key: 'macro_usage_notes', label: 'Macro Usage Notes', type: 'text', hint: 'How macros are used in this prompt.' },
+        ];
+
+        const $review = $('<div class="pa_intent_review"></div>');
+        $review.append('<div class="pa_intent_review_title">Extracted Intent — Review & Edit</div>');
+        $review.append('<small>Verify the extracted intent is accurate. Edit any fields before proceeding. Anything missing here will be lost in the rewrite.</small>');
+
+        const textareaRefs = {};
+
+        for (const field of fields) {
+            const $field = $('<div class="pa_intent_field"></div>');
+            $field.append(`<label>${escapeHtml(field.label)}</label>`);
+
+            const value = field.type === 'array'
+                ? (intent[field.key] || []).join('\n')
+                : (intent[field.key] || '');
+
+            const rows = field.type === 'array' ? Math.max(3, (intent[field.key] || []).length + 1) : 3;
+            const $textarea = $(`<textarea class="text_pole" rows="${rows}"></textarea>`);
+            $textarea.val(value);
+            textareaRefs[field.key] = { $textarea, type: field.type };
+
+            $field.append($textarea);
+            if (field.hint) {
+                $field.append(`<div class="pa_intent_field_hint">${escapeHtml(field.hint)}</div>`);
+            }
+            $review.append($field);
+        }
+
+        const $actions = $('<div class="pa_intent_actions"></div>');
+        const $cancelBtn = $('<button class="menu_button"><i class="fa-solid fa-xmark"></i> Cancel</button>');
+        const $proceedBtn = $('<button class="menu_button"><i class="fa-solid fa-arrow-right"></i> Proceed with Rewrite</button>');
+        $actions.append($cancelBtn);
+        $actions.append($proceedBtn);
+        $review.append($actions);
+
+        $results.append($review);
+
+        function cleanup() {
+            $cancelBtn.off('click');
+            $proceedBtn.off('click');
+        }
+
+        $cancelBtn.on('click', function () {
+            cleanup();
+            $review.remove();
+            reject(new Error('cancelled'));
+        });
+
+        $proceedBtn.on('click', function () {
+            cleanup();
+
+            const editedIntent = {};
+            for (const [key, ref] of Object.entries(textareaRefs)) {
+                const raw = ref.$textarea.val();
+                if (ref.type === 'array') {
+                    editedIntent[key] = raw.split('\n').map(s => s.trim()).filter(s => s.length > 0);
+                } else {
+                    editedIntent[key] = raw.trim();
+                }
+            }
+
+            $review.remove();
+            resolve(editedIntent);
+        });
+    });
+}
+
+// ─── Reimagine: Results Rendering ───────────────────────────────────────────
+
+function renderReimagineResults(reimaginedPrompt, originalPrompt, originalTokenCount) {
+    const $container = $('<div class="pa_reimagine_result"></div>');
+
+    $container.append(`
+        <div class="pa_reimagine_result_header">
+            <span>Reimagined: ${escapeHtml(originalPrompt.name)}</span>
+        </div>
+    `);
+
+    const $body = $('<div class="pa_reimagine_result_body"></div>');
+
+    // Token summary
+    const tokenInfo = [];
+    if (originalTokenCount) tokenInfo.push(`Original: ~${originalTokenCount.toLocaleString()}`);
+    if (reimaginedPrompt.rewrite_token_count) tokenInfo.push(`Reimagined: ~${reimaginedPrompt.rewrite_token_count.toLocaleString()}`);
+    if (originalTokenCount && reimaginedPrompt.rewrite_token_count) {
+        const saved = originalTokenCount - reimaginedPrompt.rewrite_token_count;
+        if (saved > 0) {
+            tokenInfo.push(`<span class="pa_token_saved">Saved: ~${saved.toLocaleString()}</span>`);
+        } else if (saved < 0) {
+            tokenInfo.push(`<span>Added: ~${Math.abs(saved).toLocaleString()}</span>`);
+        }
+    }
+    if (tokenInfo.length > 0) {
+        $body.append(`<div class="pa_token_summary">${tokenInfo.join(' &rarr; ')}</div>`);
+    }
+
+    // Header row with Copy and Apply buttons
+    const $rewriteHeader = $('<div class="pa_section_header pa_rewrite_header_row">Reimagined Prompt</div>');
+
+    const $copyBtn = $('<button class="menu_button pa_copy_rewrite_btn" title="Copy reimagined prompt to clipboard"><i class="fa-solid fa-copy"></i> <span>Copy Rewrite</span></button>');
+    $copyBtn.on('click', async function (e) {
+        e.stopPropagation();
+        try {
+            await navigator.clipboard.writeText(reimaginedPrompt.text);
+            const $span = $(this).find('span');
+            $span.text('Copied!');
+            setTimeout(() => $span.text('Copy Rewrite'), 1500);
+        } catch {
+            toastr.error('Failed to copy to clipboard.', 'Preset Analyzer');
+        }
+    });
+    $rewriteHeader.append($copyBtn);
+
+    const $applyBtn = $('<button class="menu_button pa_apply_rewrite_btn" title="Apply reimagined prompt to the preset"><i class="fa-solid fa-check"></i> <span>Apply</span></button>');
+    $applyBtn.on('click', function (e) {
+        e.stopPropagation();
+        const rawPrompts = getRawPrompts();
+        if (!rawPrompts) return;
+
+        const target = rawPrompts.find(p => p.identifier === originalPrompt.identifier);
+        if (!target) {
+            toastr.error('Could not find prompt to update.', 'Preset Analyzer');
+            return;
+        }
+
+        target.content = reimaginedPrompt.text;
+        const { saveSettingsDebounced } = SillyTavern.getContext();
+        saveSettingsDebounced();
+        toastr.success(`Applied reimagined prompt to "${originalPrompt.name}".`, 'Preset Analyzer');
+
+        const $span = $(this).find('span');
+        $span.text('Applied!');
+        $(this).prop('disabled', true);
+    });
+    $rewriteHeader.append($applyBtn);
+
+    $body.append($rewriteHeader);
+
+    // Design notes
+    if (reimaginedPrompt.design_notes) {
+        $body.append(`
+            <div class="pa_design_notes">
+                <div class="pa_design_notes_title">Design Notes</div>
+                ${escapeHtml(reimaginedPrompt.design_notes)}
+            </div>
+        `);
+    }
+
+    // Assumptions
+    if (reimaginedPrompt.assumptions && reimaginedPrompt.assumptions.length > 0) {
+        const assumptionItems = reimaginedPrompt.assumptions.map(a => `<li>${escapeHtml(a)}</li>`).join('');
+        $body.append(`
+            <div class="pa_assumptions">
+                <div class="pa_assumptions_title">Assumptions Made</div>
+                <ul>${assumptionItems}</ul>
+            </div>
+        `);
+    }
+
+    // Diff view
+    const originalText = originalPrompt.content || '';
+    if (originalText) {
+        const diffSegments = computeWordDiff(originalText, reimaginedPrompt.text);
+        const diffHtml = renderDiffHtml(diffSegments);
+        $body.append(`<div class="pa_diff_container">${diffHtml}</div>`);
+    } else {
+        $body.append(`<div class="pa_diff_container">${escapeHtml(reimaginedPrompt.text)}</div>`);
+    }
+
+    $container.append($body);
+    return $container;
+}
+
 // ─── Analysis Orchestration ──────────────────────────────────────────────────
 
 async function runCrossPromptAnalysis() {
@@ -1267,6 +1458,134 @@ async function runFollowUp(issue, activePromptsById, $parentFinding) {
     }
 }
 
+// ─── Reimagine: Ground-Up Rewrite Orchestration ────────────────────────────
+
+async function runGroundUpRewrite(promptIdentifier) {
+    const { generateRaw } = SillyTavern.getContext();
+    const $results = $('#pa_results');
+    $results.empty();
+
+    const allPrompts = getAllPrompts();
+    if (allPrompts.length === 0) {
+        toastr.info('No prompts available.', 'Preset Analyzer');
+        return;
+    }
+
+    const prompt = allPrompts.find(p => p.identifier === promptIdentifier);
+    if (!prompt) {
+        toastr.error('Selected prompt not found.', 'Preset Analyzer');
+        return;
+    }
+
+    const contextPrompts = getSelectedContextPrompts();
+    const userContext = $('#pa_user_context').val()?.trim();
+
+    // ── Call 1: Intent Extraction ──
+    let intent;
+    showProgress(`Extracting intent from "${prompt.name}"...`);
+    try {
+        const macroCounter = { count: 0 };
+        const combinedMacroMap = {};
+
+        const { text: escapedContent, macroMap: targetMap } = extractMacros(prompt.content, macroCounter);
+        Object.assign(combinedMacroMap, targetMap);
+        const escapedPrompt = { ...prompt, content: escapedContent };
+
+        const escapedContext = contextPrompts.map(p => {
+            const { text, macroMap } = extractMacros(p.content, macroCounter);
+            Object.assign(combinedMacroMap, macroMap);
+            return { ...p, content: text };
+        });
+
+        const systemPrompt = buildIntentExtractionSystemPrompt();
+        let userPrompt = buildIntentExtractionUserPrompt(escapedPrompt, escapedContext);
+        userPrompt += buildMacroReference(combinedMacroMap);
+
+        if (userContext) {
+            userPrompt += `\n\n--- USER-PROVIDED CONTEXT ---\nThe user has provided the following additional context about this prompt:\n${userContext}`;
+        }
+
+        const params = { systemPrompt, prompt: userPrompt, responseLength: 60000 };
+        console.log(`[${MODULE_NAME}] generateRaw params (intent extraction):`, JSON.stringify({
+            responseLength: params.responseLength,
+            systemPromptLength: systemPrompt.length,
+            promptLength: userPrompt.length,
+        }));
+        const result = await generateRaw(params);
+
+        const { result: parsed, truncated } = parseAnalysisResponse(result);
+        if (parsed) restoreMacrosInAnalysis(parsed, combinedMacroMap);
+
+        if (!parsed) {
+            const msg = truncated ? TRUNCATION_WARNING : 'Failed to parse intent extraction response.';
+            if (truncated) toastr.warning(TRUNCATION_WARNING, 'Preset Analyzer');
+            $results.html(`<div class="pa_error">${escapeHtml(msg)} Raw output:<br><pre>${escapeHtml(result?.substring(0, 2000) || '(empty)')}</pre></div>`);
+            return;
+        }
+
+        intent = parsed;
+    } catch (error) {
+        console.error(`[${MODULE_NAME}] Intent extraction error:`, error);
+        toastr.error(`Intent extraction failed: ${error.message}`, 'Preset Analyzer');
+        return;
+    } finally {
+        hideProgress();
+    }
+
+    // ── Interactive Step: User reviews and edits intent ──
+    let editedIntent;
+    try {
+        editedIntent = await showIntentReviewUI(intent);
+    } catch (error) {
+        if (error.message === 'cancelled') {
+            toastr.info('Reimagine cancelled.', 'Preset Analyzer');
+            return;
+        }
+        throw error;
+    }
+
+    // ── Call 2: Ground-Up Rewrite ──
+    showProgress(`Writing reimagined prompt for "${prompt.name}"...`);
+    try {
+        const { text: rewriteEscaped, macroMap: rewriteMacroMap } = extractMacros(prompt.content);
+
+        const systemPrompt = buildGroundUpRewriteSystemPrompt();
+        let rewriteUserPrompt = buildGroundUpRewriteUserPrompt({ ...prompt, content: rewriteEscaped }, editedIntent);
+        rewriteUserPrompt += buildMacroReference(rewriteMacroMap);
+
+        if (userContext) {
+            rewriteUserPrompt += `\n\n--- USER-PROVIDED CONTEXT ---\nThe user has provided the following additional context about this prompt:\n${userContext}`;
+        }
+
+        const params = { systemPrompt, prompt: rewriteUserPrompt, responseLength: 60000 };
+        console.log(`[${MODULE_NAME}] generateRaw params (ground-up rewrite):`, JSON.stringify({
+            responseLength: params.responseLength,
+            systemPromptLength: systemPrompt.length,
+            promptLength: rewriteUserPrompt.length,
+        }));
+        const result = await generateRaw(params);
+
+        const { result: parsed, truncated } = parseAnalysisResponse(result);
+        if (parsed) restoreMacrosInAnalysis(parsed, rewriteMacroMap);
+
+        if (!parsed || !parsed.reimagined_prompt) {
+            const msg = truncated ? TRUNCATION_WARNING : 'Failed to parse rewrite response.';
+            if (truncated) toastr.warning(TRUNCATION_WARNING, 'Preset Analyzer');
+            $results.html(`<div class="pa_error">${escapeHtml(msg)} Raw output:<br><pre>${escapeHtml(result?.substring(0, 2000) || '(empty)')}</pre></div>`);
+            return;
+        }
+
+        const originalTokenCount = await countTokens(prompt.content);
+        const $promptResult = renderReimagineResults(parsed.reimagined_prompt, prompt, originalTokenCount);
+        $results.append($promptResult);
+    } catch (error) {
+        console.error(`[${MODULE_NAME}] Ground-up rewrite error:`, error);
+        toastr.error(`Rewrite failed: ${error.message}`, 'Preset Analyzer');
+    } finally {
+        hideProgress();
+    }
+}
+
 // ─── Initialization ──────────────────────────────────────────────────────────
 
 (async function init() {
@@ -1374,6 +1693,25 @@ async function runFollowUp(issue, activePromptsById, $parentFinding) {
         $(this).prop('disabled', true);
         try {
             await runIndividualAnalysis(selected);
+        } finally {
+            $(this).prop('disabled', false);
+        }
+    });
+
+    // Reimagine button handler
+    $('#pa_reimagine_btn').on('click', async function () {
+        const selected = $('#pa_prompt_select').val();
+        if (!selected) {
+            toastr.info('Please select a prompt to reimagine.', 'Preset Analyzer');
+            return;
+        }
+        if (selected === '__all__') {
+            toastr.info('Reimagine works on individual prompts only. Please select a specific prompt.', 'Preset Analyzer');
+            return;
+        }
+        $(this).prop('disabled', true);
+        try {
+            await runGroundUpRewrite(selected);
         } finally {
             $(this).prop('disabled', false);
         }

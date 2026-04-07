@@ -185,6 +185,66 @@ export const INDIVIDUAL_REWRITE_SCHEMA = {
     },
 };
 
+export const INTENT_EXTRACTION_SCHEMA = {
+    name: 'IntentExtraction',
+    description: 'Schema for extracting the behavioral intent of a prompt.',
+    strict: true,
+    value: {
+        '$schema': 'http://json-schema.org/draft-04/schema#',
+        'type': 'object',
+        'properties': {
+            'prompt_name': { 'type': 'string' },
+            'prompt_identifier': { 'type': ['string', 'number'] },
+            'purpose': { 'type': 'string' },
+            'behavioral_directives': {
+                'type': 'array',
+                'items': { 'type': 'string' },
+            },
+            'guardrails': {
+                'type': 'array',
+                'items': { 'type': 'string' },
+            },
+            'tone_and_style': { 'type': 'string' },
+            'edge_cases': {
+                'type': 'array',
+                'items': { 'type': 'string' },
+            },
+            'implicit_assumptions': {
+                'type': 'array',
+                'items': { 'type': 'string' },
+            },
+            'macro_usage_notes': { 'type': 'string' },
+        },
+        'required': ['prompt_name', 'prompt_identifier', 'purpose', 'behavioral_directives', 'guardrails', 'tone_and_style', 'edge_cases', 'implicit_assumptions', 'macro_usage_notes'],
+    },
+};
+
+export const GROUND_UP_REWRITE_SCHEMA = {
+    name: 'GroundUpRewrite',
+    description: 'Schema for ground-up prompt rewrite based on extracted intent.',
+    strict: true,
+    value: {
+        '$schema': 'http://json-schema.org/draft-04/schema#',
+        'type': 'object',
+        'properties': {
+            'reimagined_prompt': {
+                'type': 'object',
+                'properties': {
+                    'text': { 'type': 'string' },
+                    'design_notes': { 'type': 'string' },
+                    'assumptions': {
+                        'type': 'array',
+                        'items': { 'type': 'string' },
+                    },
+                    'rewrite_token_count': { 'type': 'integer' },
+                },
+                'required': ['text', 'design_notes', 'assumptions', 'rewrite_token_count'],
+            },
+        },
+        'required': ['reimagined_prompt'],
+    },
+};
+
 export const FOLLOWUP_SCHEMA = {
     name: 'CrossPromptFollowUp',
     description: 'Schema for targeted cross-prompt follow-up analysis.',
